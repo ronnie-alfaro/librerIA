@@ -82,6 +82,12 @@ export const llmConfigSchema = z.object({
   has_key: z.boolean(),
 });
 
+export const llmModelsSchema = z.object({
+  provider: z.string(),
+  models: z.array(z.string()),
+  error: z.string().optional(),
+});
+
 export type Book = z.infer<typeof bookSchema>;
 export type Chapter = z.infer<typeof chapterSchema>;
 export type Character = z.infer<typeof characterSchema>;
@@ -90,6 +96,7 @@ export type StoryEvent = z.infer<typeof storyEventSchema>;
 export type CharacterMapData = z.infer<typeof characterMapSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type LlmConfig = z.infer<typeof llmConfigSchema>;
+export type LlmModels = z.infer<typeof llmModelsSchema>;
 
 export type WorkspaceTab = 'overview' | 'ask' | 'graph' | 'timeline' | 'characters' | 'chapters';
 export type ThemeMode = 'light' | 'dark' | 'system';

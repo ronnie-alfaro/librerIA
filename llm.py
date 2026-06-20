@@ -55,6 +55,27 @@ _ENV_KEY_MAP = {
     "gemini":    "GEMINI_API_KEY",
 }
 
+_MODEL_FALLBACKS = {
+    "anthropic": [
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
+        "claude-3-5-sonnet-latest",
+        "claude-3-5-haiku-latest",
+    ],
+    "openai": [
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+    ],
+    "gemini": [
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+    ],
+    "local": ["local"],
+}
+
 
 def load_config() -> dict:
     if CONFIG_FILE.exists():
@@ -129,6 +150,68 @@ def save_config(data: dict) -> None:
         lines.append("\n")
 
     CONFIG_FILE.write_text("".join(lines))
+
+
+def _provider_config(provider: str, overrides: dict | None = None) -> dict:
+    cfg = load_config()
+    merged = {**_DEFAULTS.get(provider, {}), **cfg.get(provider, {})}
+    overrides = overrides or {}
+    for key in ("api_key", "base_url", "answer_model", "expand_model", "context_limit"):
+        if overrides.get(key):
+            merged[key] = overrides[key]
+    env = _ENV_KEY_MAP.get(provider)
+    if env and not merged.get("api_key"):
+        merged["api_key"] = os.environ.get(env, "")
+    return merged
+
+
+def list_available_models(provider: str | None = None, overrides: dict | None = None) -> list[str]:
+    cfg = load_config()
+    provider = provider or cfg.get("llm", {}).get("provider", "anthropic")
+    pcfg = _provider_config(provider, overrides)
+
+    try:
+        if provider == "anthropic":
+            key = pcfg.get("api_key", "")
+            if not key:
+                return _MODEL_FALLBACKS["anthropic"]
+            resp = httpx.get(
+                "https://api.anthropic.com/v1/models",
+                headers={
+                    "x-api-key": key,
+                    "anthropic-version": "2023-06-01",
+                },
+                timeout=_TIMEOUT_REMOTE,
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            models = [item.get("id", "") for item in data if item.get("id")]
+            return sorted(set(models)) or _MODEL_FALLBACKS["anthropic"]
+
+        if provider in ("openai", "gemini", "local"):
+            base_url = pcfg.get("base_url") or _DEFAULTS.get(provider, {}).get("base_url", "")
+            if provider == "gemini":
+                base_url = _DEFAULTS["gemini"]["base_url"]
+            key = pcfg.get("api_key") or "no-key"
+            timeout = _TIMEOUT_LOCAL if provider == "local" else _TIMEOUT_REMOTE
+            resp = httpx.get(
+                f"{base_url.rstrip('/')}/models",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            data = payload.get("data", payload.get("models", []))
+            models = [
+                item.get("id") or item.get("name")
+                for item in data
+                if isinstance(item, dict) and (item.get("id") or item.get("name"))
+            ]
+            return sorted(set(models)) or _MODEL_FALLBACKS.get(provider, [])
+    except Exception:
+        return _MODEL_FALLBACKS.get(provider, [])
+
+    return _MODEL_FALLBACKS.get(provider, [])
 
 
 class LLM:

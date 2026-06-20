@@ -3,10 +3,12 @@ import {
   chapterSchema,
   characterMapSchema,
   llmConfigSchema,
+  llmModelsSchema,
   searchResultSchema,
   type Book,
   type Chapter,
   type LlmConfig,
+  type LlmModels,
   type SearchResult,
   type TaskStreamEvent,
 } from '../domain';
@@ -76,6 +78,19 @@ export async function saveConfig(payload: Partial<LlmConfig> & { api_key?: strin
     const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'No se pudieron guardar los ajustes.');
   }
+}
+
+export async function fetchConfigModels(payload: Partial<LlmConfig> & { api_key?: string }): Promise<LlmModels> {
+  const response = await fetch('/api/config/models', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'No se pudieron cargar los modelos.');
+  }
+  return llmModelsSchema.parse(data);
 }
 
 export async function fetchChapters(bookId: string): Promise<Chapter[]> {

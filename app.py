@@ -33,7 +33,7 @@ from query import (
     get_vector_collection, load_section, expand_queries, retrieve,
     build_context_block, RERANK_MODEL, SYSTEM_PROMPT,
 )
-from llm import LLM, load_config, save_config, fit_contexts
+from llm import LLM, load_config, save_config, fit_contexts, list_available_models
 from storage import (
     init_db,
     migrate_json_files,
@@ -913,6 +913,17 @@ async def api_save_config(req: Request):
                 "answer_model": info["answer_model"], "warning": err or None}
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+
+@app.post("/api/config/models")
+async def api_list_models(req: Request):
+    data = await req.json()
+    provider = data.get("provider") or _g["llm"].provider
+    try:
+        models = list_available_models(provider, data)
+        return {"provider": provider, "models": models}
+    except Exception as exc:
+        return JSONResponse({"models": [], "error": str(exc)}, status_code=400)
 
 
 async def _save_upload_to_temp(file: UploadFile, suffix: str) -> Path:

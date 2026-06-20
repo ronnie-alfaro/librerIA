@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { fetchConfig, saveConfig } from '../api/client';
+import { fetchConfig, fetchConfigModels, saveConfig } from '../api/client';
+import type { LlmConfig } from '../domain';
 
 const providers = ['anthropic', 'openai', 'gemini', 'local'];
+type ModelLoadPayload = Partial<LlmConfig> & { api_key?: string };
 
 export function SettingsView() {
   const [provider, setProvider] = useState('anthropic');
@@ -13,6 +15,8 @@ export function SettingsView() {
   const [hasKey, setHasKey] = useState(false);
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
 
   useEffect(() => {
     fetchConfig()
@@ -23,9 +27,42 @@ export function SettingsView() {
         setBaseUrl(config.base_url);
         setContextLimit(config.context_limit);
         setHasKey(config.has_key);
+        if (config.has_key || config.provider === 'local') {
+          void loadModels({
+            provider: config.provider,
+            base_url: config.base_url,
+            answer_model: config.answer_model,
+            expand_model: config.expand_model,
+          });
+        }
       })
       .catch((err) => setStatus(err instanceof Error ? err.message : 'No se pudieron cargar los ajustes.'));
   }, []);
+
+  async function loadModels(payload: ModelLoadPayload = {
+    provider,
+    base_url: baseUrl,
+    answer_model: answerModel,
+    expand_model: expandModel,
+    api_key: apiKey,
+    context_limit: contextLimit,
+  }) {
+    setLoadingModels(true);
+    try {
+      const result = await fetchConfigModels(payload);
+      setModels(result.models);
+      if (result.models.length) {
+        setAnswerModel((current) => current && result.models.includes(current) ? current : result.models[0]);
+        setExpandModel((current) => current && result.models.includes(current) ? current : result.models[0]);
+      }
+      if (result.error) setStatus(result.error);
+    } catch (err) {
+      setModels([]);
+      setStatus(err instanceof Error ? err.message : 'No se pudieron cargar los modelos.');
+    } finally {
+      setLoadingModels(false);
+    }
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -42,6 +79,13 @@ export function SettingsView() {
       });
       setStatus('Ajustes guardados.');
       if (apiKey) setHasKey(true);
+      await loadModels({
+        provider,
+        answer_model: answerModel,
+        expand_model: expandModel,
+        base_url: baseUrl,
+        context_limit: contextLimit,
+      });
       setApiKey('');
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'No se pudieron guardar los ajustes.');
@@ -63,17 +107,35 @@ export function SettingsView() {
       <form className="settings-grid" onSubmit={submit}>
         <label>
           Proveedor
-          <select value={provider} onChange={(event) => setProvider(event.target.value)}>
+          <select
+            value={provider}
+            onChange={(event) => {
+              setProvider(event.target.value);
+              setModels([]);
+            }}
+          >
             {providers.map((item) => <option value={item} key={item}>{item}</option>)}
           </select>
         </label>
         <label>
           Modelo de respuesta
-          <input value={answerModel} onChange={(event) => setAnswerModel(event.target.value)} />
+          {models.length ? (
+            <select value={answerModel} onChange={(event) => setAnswerModel(event.target.value)}>
+              {models.map((model) => <option value={model} key={model}>{model}</option>)}
+            </select>
+          ) : (
+            <input value={answerModel} onChange={(event) => setAnswerModel(event.target.value)} placeholder="Guarda o conecta para cargar modelos" />
+          )}
         </label>
         <label>
           Modelo de expansión
-          <input value={expandModel} onChange={(event) => setExpandModel(event.target.value)} />
+          {models.length ? (
+            <select value={expandModel} onChange={(event) => setExpandModel(event.target.value)}>
+              {models.map((model) => <option value={model} key={model}>{model}</option>)}
+            </select>
+          ) : (
+            <input value={expandModel} onChange={(event) => setExpandModel(event.target.value)} placeholder="Usa un modelo pequeño/rápido si existe" />
+          )}
         </label>
         <label>
           URL base
@@ -89,6 +151,9 @@ export function SettingsView() {
         </label>
         <div className="settings-actions">
           <button className="button" disabled={saving}>{saving ? 'Guardando...' : 'Guardar ajustes'}</button>
+          <button className="button secondary" type="button" onClick={() => void loadModels()} disabled={saving || loadingModels}>
+            {loadingModels ? 'Cargando modelos...' : 'Cargar modelos'}
+          </button>
           {status && <span>{status}</span>}
         </div>
       </form>
