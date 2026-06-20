@@ -1,0 +1,2771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BookGraph</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; }
+  .nav-btn {
+    display: flex; align-items: center; gap: 0.5rem;
+    width: 100%; text-align: left;
+    padding: 0.5rem 0.75rem; border-radius: 0.5rem;
+    font-size: 0.875rem; color: #94a3b8;
+    background: transparent; border: none; cursor: pointer;
+    transition: background-color 150ms, color 150ms;
+  }
+  .nav-btn:hover { background-color: #1e293b; color: #f1f5f9; }
+  .nav-btn.active { background-color: rgb(76 29 149 / 0.5); color: #c4b5fd; font-weight: 500; }
+  .card { @apply bg-slate-900 border border-slate-800 rounded-xl p-5; }
+  .btn-primary { @apply bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium
+                 px-4 py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed; }
+  .btn-ghost  { @apply bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm
+                px-4 py-2 rounded-lg transition-colors; }
+  .input      { @apply bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm
+                text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500 w-full; }
+  /* Force dark text across every input type (text, number, password, textarea, select) */
+  .input { color-scheme: dark; color: #f1f5f9; }
+  select.input option { background-color: #1e293b; color: #f1f5f9; }
+  /* Prevent Chrome/Safari autofill from overriding text colour */
+  .input:-webkit-autofill,
+  .input:-webkit-autofill:hover,
+  .input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #f1f5f9 !important;
+    -webkit-box-shadow: 0 0 0 1000px #1e293b inset !important;
+    caret-color: #f1f5f9;
+  }
+  .badge      { @apply text-xs px-2 py-0.5 rounded-full font-medium; }
+  .prose-dark { @apply text-slate-200 leading-relaxed; }
+  .prose-dark h2 { @apply text-violet-300 font-semibold text-base mt-5 mb-2 border-b border-slate-700 pb-1; }
+  .prose-dark h3 { @apply text-slate-200 font-semibold text-sm mt-4 mb-1; }
+  .prose-dark p  { @apply text-slate-300 text-sm mb-3; }
+  .prose-dark ul { @apply list-disc list-inside text-slate-300 text-sm space-y-1 mb-3; }
+  .prose-dark li { @apply text-slate-300; }
+  .prose-dark strong { @apply text-slate-100 font-semibold; }
+  .prose-dark em { @apply text-violet-300 italic; }
+  .prose-dark blockquote { @apply border-l-2 border-violet-500 pl-3 text-slate-400 italic text-sm my-3; }
+  #graph-cy canvas { background: transparent !important; }
+  .drop-zone.drag-over { @apply border-violet-400 bg-violet-900/20; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+  .stage-dot { @apply w-2 h-2 rounded-full bg-violet-500 animate-pulse inline-block mr-2; }
+  @keyframes progshine {
+    to { background-position: 300% center; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .spinner {
+    width: 22px; height: 22px;
+    border: 2px solid #1e293b;
+    border-top-color: #7c3aed;
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+    flex-shrink: 0;
+  }
+  #task-progress-bar {
+    background: linear-gradient(90deg,#6d28d9 0%,#a78bfa 50%,#6d28d9 100%);
+    background-size: 300% auto;
+    transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+  }
+  #task-progress-bar.running { animation: progshine 1.8s linear infinite; }
+  #task-fun-msg { transition: opacity 0.35s ease; }
+  #task-wave { letter-spacing: 0.18em; text-shadow: 0 0 10px #7c3aed, 0 0 22px #4c1d9550; }
+
+  /* ── Character Profile Card ────────────────────── */
+  .profile-card {
+    border: 1px solid #2d1657; border-top: 3px solid #7c3aed;
+    border-radius: 0.75rem; background: #0f172a; overflow: hidden;
+  }
+  .profile-header {
+    padding: 1.375rem 1.25rem 1.125rem; text-align: center;
+    background: linear-gradient(165deg, #160826 0%, #0f172a 65%);
+    border-bottom: 1px solid #1e293b;
+  }
+  .profile-eyebrow {
+    color: #4c1d95; font-size: 0.575rem; letter-spacing: 0.38em;
+    margin-bottom: 0.5rem; font-weight: 600;
+  }
+  .profile-name {
+    color: #f1f5f9; font-size: 1.375rem; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.2;
+  }
+  .profile-section { padding: 0.875rem 1.25rem; border-bottom: 1px solid #1e293b; }
+  .profile-section:last-child { border-bottom: none; }
+  .profile-sec-hdr { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .profile-sec-sym { font-size: 0.85rem; line-height: 1; flex-shrink: 0; }
+  .profile-sec-lbl { font-size: 0.575rem; font-weight: 700; letter-spacing: 0.2em; }
+  .profile-sec-rule { flex: 1; height: 1px; }
+  .profile-body { color: #cbd5e1; font-size: 0.8rem; line-height: 1.7; }
+  .profile-body p { margin: 0 0 0.45rem 0; }
+  .profile-body ul { list-style: disc; padding-left: 1.25rem; margin: 0 0 0.45rem 0; }
+  .profile-body ol { list-style: decimal; padding-left: 1.25rem; margin: 0 0 0.45rem 0; }
+  .profile-body li { margin-bottom: 0.275rem; }
+  .profile-body p:last-child,
+  .profile-body ul:last-child,
+  .profile-body ol:last-child { margin-bottom: 0; }
+  .profile-body strong { color: #e2e8f0; font-weight: 600; }
+  .profile-body em { color: #a78bfa; font-style: italic; }
+  .profile-body blockquote {
+    border-left: 2px solid #4c1d95; padding: 0.5rem 0.875rem; margin: 0.5rem 0;
+    background: rgba(30,41,59,0.6); border-radius: 0 6px 6px 0;
+    font-style: italic; color: #94a3b8;
+  }
+
+  /* ── Timeline ───────────────────────────────────── */
+  .timeline-track { position: relative; padding-left: 2rem; }
+  .timeline-track::before {
+    content: ''; position: absolute;
+    left: 0.5625rem; top: 0.875rem; bottom: 0.875rem;
+    width: 2px;
+    background: linear-gradient(to bottom, #4c1d95, rgba(30,41,59,0));
+    border-radius: 1px;
+  }
+  .timeline-event { position: relative; margin-bottom: 0.875rem; }
+  .timeline-event:last-child { margin-bottom: 0; }
+  .timeline-dot {
+    position: absolute; left: -1.5rem; top: 0.875rem;
+    width: 0.6875rem; height: 0.6875rem;
+    border-radius: 50%; border: 2px solid; background: #0f172a; z-index: 1;
+  }
+</style>
+</head>
+
+<body class="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+<nav class="w-52 shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col">
+  <div class="px-3 py-3 border-b border-slate-800">
+    <img src="/static/literarIA-circle.png" alt="BookGraph" class="w-full h-auto object-contain"/>
+  </div>
+
+  <div class="flex-1 flex flex-col p-2 gap-1">
+    <button class="nav-btn active" id="nav-library" onclick="showSection('library')">
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+      </svg>
+      Library
+      <span id="book-count" class="ml-auto badge bg-slate-800 text-slate-500 hidden"></span>
+    </button>
+
+    <button class="nav-btn" id="nav-query" onclick="showSection('query')">
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+      </svg>
+      Query
+    </button>
+
+    <button class="nav-btn" id="nav-tasks" onclick="showSection('tasks')" title="Book Analysis">
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      Book Analysis
+    </button>
+
+    <button class="nav-btn" id="nav-search" onclick="showSection('search')">
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+      </svg>
+      Search
+    </button>
+
+    <button class="nav-btn" id="nav-settings" onclick="showSection('settings')">
+      <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+      </svg>
+      Settings
+    </button>
+  </div>
+
+  <div class="p-3 border-t border-slate-800 space-y-2">
+    <div class="flex items-center justify-between">
+      <span class="text-xs text-slate-600" data-i18n="lbl_language">Interface</span>
+      <div class="flex rounded-md overflow-hidden border border-slate-700">
+        <button id="lang-en" onclick="setLang('en')"
+                class="lang-btn text-xs px-2.5 py-0.5 font-semibold transition-colors">EN</button>
+        <button id="lang-es" onclick="setLang('es')"
+                class="lang-btn text-xs px-2.5 py-0.5 font-semibold transition-colors border-l border-slate-700">ES</button>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+      <span id="provider-badge" class="text-xs text-slate-500">loading…</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Main ──────────────────────────────────────────────────────────────── -->
+<main class="flex-1 overflow-hidden flex flex-col">
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     LIBRARY
+═════════════════════════════════════════════════════════════════════════ -->
+<section id="section-library" class="flex-1 flex flex-col overflow-hidden">
+  <div class="p-6 border-b border-slate-800 shrink-0">
+    <h2 class="text-lg font-semibold" data-i18n="sec_library_title">Library</h2>
+    <p class="text-sm text-slate-500 mt-0.5" data-i18n="sec_library_desc">Add books as PDF or EPUB — they are indexed locally.</p>
+  </div>
+
+  <div class="flex-1 overflow-y-auto p-6 space-y-6">
+    <!-- Upload zone -->
+    <div class="card">
+      <div id="drop-zone"
+           class="drop-zone border-2 border-dashed border-slate-700 rounded-xl p-8
+                  flex flex-col items-center justify-center gap-3 cursor-pointer
+                  hover:border-violet-600 hover:bg-violet-900/10 transition-all"
+           onclick="document.getElementById('file-input').click()"
+           ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+        <svg class="w-10 h-10 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+        <div class="text-center">
+          <p class="text-sm text-slate-400">Drop a PDF or EPUB here, or <span class="text-violet-400">click to browse</span></p>
+          <p class="text-xs text-slate-600 mt-1" data-i18n="upload_formats">Supports .pdf · .epub</p>
+        </div>
+      </div>
+      <input type="file" id="file-input" accept=".pdf,.epub" class="hidden" onchange="startIngest(this.files[0])"/>
+
+      <!-- Optional metadata override -->
+      <div class="mt-4 grid grid-cols-2 gap-3">
+        <input id="ingest-title"  class="input" placeholder="Title (auto-detected)"/>
+        <input id="ingest-author" class="input" placeholder="Author (auto-detected)"/>
+      </div>
+      <div class="mt-3 flex items-center gap-3">
+        <label class="text-xs text-slate-500 shrink-0" data-i18n="ingest_lang_label">Language</label>
+        <select id="ingest-lang" class="input w-44 text-xs">
+          <option value="" data-i18n="ingest_lang_auto">Auto-detect</option>
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+        </select>
+        <span class="text-xs text-slate-600" data-i18n="ingest_lang_hint">Auto-detect works well for full books.</span>
+      </div>
+    </div>
+
+    <!-- Progress card (hidden by default) -->
+    <div id="ingest-progress" class="card hidden">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-medium text-slate-300" id="ingest-file-name">Ingesting…</h3>
+        <span id="ingest-stage-badge" class="badge bg-violet-900 text-violet-300">Starting</span>
+      </div>
+      <div class="w-full bg-slate-800 rounded-full h-1.5 mb-3">
+        <div id="ingest-bar" class="bg-violet-500 h-1.5 rounded-full transition-all duration-500" style="width:5%"></div>
+      </div>
+      <p id="ingest-msg" class="text-xs text-slate-500"><span class="stage-dot"></span>Initializing…</p>
+    </div>
+
+    <!-- Book grid -->
+    <div id="book-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"></div>
+
+    <!-- Cover image fallback (used via cloneNode when <img> 404s) -->
+    <template id="cover-placeholder">
+      <div class="w-14 h-20 bg-slate-800 rounded-lg flex items-center justify-center shrink-0">
+        <svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+        </svg>
+      </div>
+    </template>
+
+    <p id="empty-library" class="text-center text-slate-600 text-sm pt-8 hidden" data-i18n="empty_library">
+      No books yet — upload one above to get started.
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     QUERY
+═════════════════════════════════════════════════════════════════════════ -->
+<section id="section-query" class="flex-1 flex flex-col overflow-hidden hidden">
+  <div class="p-6 border-b border-slate-800 shrink-0">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-semibold" data-i18n="sec_query_title">Query</h2>
+        <p class="text-sm text-slate-500 mt-0.5" data-i18n="sec_query_desc">Ask complex questions across all your books.</p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <select id="query-book-filter" class="input w-44 text-xs">
+          <option value="">All books</option>
+        </select>
+        <select id="query-top-k" class="input w-28 text-xs"
+                title="How many book sections to include as context for the answer">
+          <option value="5">5 sources</option>
+          <option value="8">8 sources</option>
+          <option value="12">12 sources</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Messages -->
+  <div id="query-messages" class="flex-1 overflow-y-auto p-6 space-y-4"></div>
+
+  <!-- Input bar -->
+  <div class="p-4 border-t border-slate-800 shrink-0">
+    <div class="flex gap-3">
+      <textarea id="query-input" rows="2"
+        class="input resize-none flex-1 text-sm"
+        data-i18n-placeholder="query_placeholder"
+        placeholder="Who is connected to John and how? What motivates the antagonist?…"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendQuery();}"></textarea>
+      <button class="btn-primary self-end" id="query-btn" onclick="sendQuery()">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     TASKS
+═════════════════════════════════════════════════════════════════════════ -->
+<section id="section-tasks" class="flex-1 flex flex-col overflow-hidden hidden">
+  <div class="p-6 border-b border-slate-800 shrink-0">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-semibold" data-i18n="sec_tasks_title">Book Analysis</h2>
+        <p class="text-sm text-slate-500 mt-0.5" data-i18n="sec_tasks_desc">Character map, timeline, and profiles — all from your book.</p>
+      </div>
+      <!-- hidden native select keeps all existing value-reads working -->
+      <select id="tasks-book-select" class="hidden" onchange="onBookSelect()">
+        <option value="">— Select a book —</option>
+      </select>
+
+      <!-- visual book picker -->
+      <div class="relative shrink-0" id="book-picker">
+        <button id="book-picker-btn" onclick="toggleBookPicker()"
+                class="flex items-center gap-3 bg-slate-800/60 hover:bg-slate-800
+                       border border-slate-700 hover:border-violet-600/60 rounded-xl
+                       px-3 py-2.5 transition-all w-64 text-left group">
+          <div id="book-picker-thumb"
+               class="w-8 h-11 rounded-md bg-slate-700/80 shrink-0 overflow-hidden
+                      flex items-center justify-center text-slate-600">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div id="book-picker-title"
+                 class="text-sm font-medium text-slate-400 truncate">— Select a book —</div>
+            <div id="book-picker-author"
+                 class="text-xs text-slate-500 truncate mt-0.5 hidden"></div>
+          </div>
+          <svg id="book-picker-chevron"
+               class="w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform group-hover:text-slate-400"
+               fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+
+        <div id="book-picker-dropdown"
+             class="hidden absolute right-0 top-full mt-1.5 w-72 bg-slate-900/95 backdrop-blur
+                    border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+          <div id="book-picker-list" class="p-1.5 max-h-72 overflow-y-auto"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden input keeps execCharChart() working without a visible field -->
+  <input id="char-name-input" type="hidden" value=""/>
+
+  <div class="flex-1 overflow-y-auto p-6 space-y-6">
+
+    <!-- CTA: shown when a book is selected but no analysis exists yet -->
+    <div id="analysis-cta" class="hidden">
+      <div class="card border-dashed border-slate-700 flex flex-col items-center gap-5 py-12 text-center">
+        <div class="text-5xl">🕸️</div>
+        <div>
+          <h3 class="font-semibold text-base mb-1" data-i18n="cta_title">Ready to analyse</h3>
+          <p id="analysis-cta-desc" class="text-sm text-slate-500 max-w-xs mx-auto" data-i18n="cta_desc">
+            Generate a character map, relationship graph, and timeline from your book passages.
+          </p>
+        </div>
+        <button class="btn-primary px-6 py-2.5 text-sm" onclick="startAnalysis()" data-i18n="cta_btn">
+          Start Book Analysis
+        </button>
+      </div>
+    </div>
+
+    <!-- Task output -->
+    <div id="task-output" class="hidden space-y-4">
+
+      <!-- Status bar -->
+      <div id="task-status" class="card hidden">
+        <div class="w-full bg-slate-800 rounded-full h-1.5 mb-4 overflow-hidden">
+          <div id="task-progress-bar" class="h-1.5 rounded-full running" style="width:0%"></div>
+        </div>
+        <div class="flex items-center gap-2 mb-2">
+          <span class="stage-dot"></span>
+          <span id="task-status-msg" class="text-xs text-slate-500 uppercase tracking-wider font-medium">Working…</span>
+          <span id="task-elapsed" class="hidden text-xs text-slate-700 font-mono ml-1"></span>
+        </div>
+        <p id="task-fun-msg" class="text-sm text-violet-300 italic ml-4"></p>
+        <div id="task-wave-anim" class="hidden ml-4 mt-2 flex items-center gap-3" aria-hidden="true">
+          <span id="task-wave" class="font-mono text-violet-700 text-lg select-none"></span>
+          <span id="task-provider-logo" class="opacity-60 select-none"></span>
+        </div>
+      </div>
+
+      <!-- Analysis card with 5 tabs -->
+      <div id="analysis-card" class="card hidden">
+
+        <!-- Tab bar -->
+        <div class="flex gap-0.5 border-b border-slate-800 mb-4 overflow-x-auto">
+          <button data-tab="map"
+                  class="analysis-tab shrink-0 px-4 py-2 text-xs font-medium border-b-2 border-violet-500 text-violet-300 hover:text-violet-200"
+                  onclick="showAnalysisTab('map', this)" data-i18n="tab_map">Character Map</button>
+          <button data-tab="timeline"
+                  class="analysis-tab shrink-0 px-4 py-2 text-xs font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-300"
+                  onclick="showAnalysisTab('timeline', this)" data-i18n="tab_timeline">Timeline</button>
+          <button data-tab="characters"
+                  class="analysis-tab shrink-0 px-4 py-2 text-xs font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-300"
+                  onclick="showAnalysisTab('characters', this)" data-i18n="tab_characters">Characters</button>
+          <button data-tab="chapters"
+                  class="analysis-tab shrink-0 px-4 py-2 text-xs font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-300"
+                  onclick="showAnalysisTab('chapters', this)" data-i18n="tab_chapters">Chapters</button>
+          <button data-tab="profiles"
+                  class="analysis-tab shrink-0 px-4 py-2 text-xs font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-300"
+                  onclick="showAnalysisTab('profiles', this)" data-i18n="tab_profiles">Profiles</button>
+        </div>
+
+        <!-- ── Tab: Character Map ── -->
+        <div id="tab-panel-map">
+          <div class="flex items-center justify-between mb-3">
+            <span id="char-map-cached-badge"
+                  class="hidden text-xs text-slate-500 italic" data-i18n="from_cache">from cache</span>
+            <div class="flex gap-2 ml-auto">
+              <button class="btn-ghost text-xs" onclick="execCharMap(null, true)" data-i18n="btn_reanalyze">↻ Re-analyze</button>
+              <button class="btn-ghost text-xs" onclick="fitGraph()" data-i18n="btn_fit">⊡ Fit</button>
+              <button class="btn-ghost text-xs" onclick="downloadPNG()" data-i18n="btn_svg">↓ PNG</button>
+            </div>
+          </div>
+
+          <div style="height:640px">
+            <div id="graph-box" class="bg-slate-950/60 rounded-xl overflow-hidden relative" style="height:100%">
+              <div id="graph-cy" style="width:100%;height:100%"></div>
+              <p class="absolute bottom-2 right-3 text-xs text-slate-700 pointer-events-none select-none">
+                click node · click edge · drag · scroll to zoom
+              </p>
+
+              <!-- Character info panel (overlay on node click) -->
+              <div id="char-info-panel"
+                   class="hidden absolute top-3 right-3 z-20 w-64 bg-slate-900/95 border border-slate-700
+                          rounded-xl p-4 overflow-y-auto flex flex-col gap-1"
+                   style="max-height:calc(100% - 24px)">
+                <div class="flex items-start justify-between mb-1">
+                  <h4 id="char-info-name" class="font-semibold text-sm leading-tight"></h4>
+                  <button onclick="document.getElementById('char-info-panel').classList.add('hidden')"
+                          class="text-slate-600 hover:text-slate-300 text-xl leading-none ml-2 shrink-0">×</button>
+                </div>
+                <span id="char-info-role" class="badge mb-2 self-start"></span>
+                <p id="char-info-desc" class="text-xs text-slate-400 leading-relaxed mb-3"></p>
+                <div id="char-info-rels"></div>
+                <div id="char-info-events"></div>
+                <div id="char-info-actions" class="mt-1"></div>
+              </div>
+
+              <!-- Relationship deep-dive panel (overlay on edge click) -->
+              <div id="rel-panel"
+                   class="hidden absolute top-3 right-3 z-20 w-64 bg-slate-900/95 border border-slate-700
+                          rounded-xl overflow-y-auto flex flex-col"
+                   style="max-height:calc(100% - 24px)">
+                <div class="p-3 border-b border-slate-700/60 shrink-0">
+                  <div class="flex items-start justify-between mb-2.5">
+                    <span class="text-xs text-slate-500 font-medium tracking-wider uppercase">Relationship</span>
+                    <button onclick="closeRelPanel()" class="text-slate-600 hover:text-slate-300 text-xl leading-none ml-2 shrink-0">×</button>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <div class="flex-1 min-w-0">
+                      <div id="rel-a-name" class="text-xs font-semibold leading-tight truncate"></div>
+                      <div id="rel-a-role" class="mt-0.5"></div>
+                    </div>
+                    <div id="rel-type-badge" class="badge text-xs shrink-0 px-2"></div>
+                    <div class="flex-1 min-w-0 text-right">
+                      <div id="rel-b-name" class="text-xs font-semibold leading-tight truncate"></div>
+                      <div id="rel-b-role" class="mt-0.5 flex justify-end"></div>
+                    </div>
+                  </div>
+                </div>
+                <div id="rel-content" class="p-3 overflow-y-auto flex-1"></div>
+              </div>
+            </div>
+          </div>
+        </div><!-- /tab-panel-map -->
+
+        <!-- ── Tab: Timeline ── -->
+        <div id="tab-panel-timeline" class="hidden">
+          <div class="flex justify-end mb-3">
+            <button class="btn-ghost text-xs" onclick="saveTimelinePDF()" data-i18n="btn_save_pdf">↓ PDF</button>
+          </div>
+          <div id="tab-content-timeline" class="space-y-2"></div>
+        </div>
+
+        <!-- ── Tab: Characters ── -->
+        <div id="tab-panel-characters" class="hidden">
+          <div id="tab-content-characters" class="grid grid-cols-1 gap-2 sm:grid-cols-2"></div>
+        </div>
+
+        <!-- ── Tab: Chapters ── -->
+        <div id="tab-panel-chapters" class="hidden">
+          <!-- Chapter list -->
+          <div id="chapters-list">
+            <p class="text-xs text-slate-600 text-center py-8" data-i18n="chapters_empty">No chapters found.</p>
+          </div>
+          <!-- Chapter detail -->
+          <div id="chapters-detail" class="hidden">
+            <div class="flex items-center justify-between mb-4">
+              <button onclick="showChaptersList()"
+                      class="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                <span data-i18n="back_to_chapters">← Chapters</span>
+              </button>
+              <div class="flex items-center gap-3">
+                <h3 id="chapter-detail-title" class="font-semibold text-sm text-slate-200"></h3>
+                <span id="chapter-cached-badge" class="hidden text-xs text-slate-500 italic" data-i18n="from_cache">from cache</span>
+              </div>
+              <div class="flex gap-2">
+                <button class="btn-ghost text-xs" onclick="saveChapterSummaryPDF()" data-i18n="btn_save_pdf">↓ PDF</button>
+                <button class="btn-ghost text-xs" onclick="regenChapterSummary()" data-i18n="btn_regenerate">↻ Regenerate</button>
+              </div>
+            </div>
+            <div id="chapter-summary-content"></div>
+          </div>
+        </div>
+
+        <!-- ── Tab: Profiles ── -->
+        <div id="tab-panel-profiles" class="hidden">
+          <!-- Grid of character avatar buttons -->
+          <div id="profiles-grid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"></div>
+
+          <!-- Profile detail (hidden until character selected) -->
+          <div id="profiles-detail" class="hidden">
+            <div class="flex items-center justify-between mb-4">
+              <button onclick="showProfilesGrid()"
+                      class="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                <span data-i18n="back_to_profiles">← Profiles</span>
+              </button>
+              <div class="flex items-center gap-3">
+                <h3 class="font-semibold text-sm" id="char-chart-title"></h3>
+                <span id="char-chart-cached-badge" class="hidden text-xs text-slate-500 italic" data-i18n="from_cache">from cache</span>
+              </div>
+              <div class="flex gap-2">
+                <button class="btn-ghost text-xs" onclick="saveProfileAsPDF()" data-i18n="btn_save_pdf">↓ PDF</button>
+                <button class="btn-ghost text-xs" onclick="execCharChart(true)" data-i18n="btn_regenerate">↻ Regenerate</button>
+              </div>
+            </div>
+            <div id="char-chart-content"></div>
+            <div id="char-chart-sources" class="hidden mt-4 pt-4 border-t border-slate-800">
+              <p class="text-xs text-slate-600 font-medium mb-2" data-i18n="sources_label">SOURCES</p>
+              <div id="char-chart-sources-list" class="space-y-1"></div>
+            </div>
+          </div>
+        </div><!-- /tab-panel-profiles -->
+
+      </div><!-- /analysis-card -->
+    </div><!-- /task-output -->
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     SETTINGS
+═════════════════════════════════════════════════════════════════════════ -->
+<!-- ── Search section ──────────────────────────────────────────────────── -->
+<section id="section-search" class="flex-1 flex flex-col overflow-hidden hidden">
+  <div class="p-6 border-b border-slate-800 shrink-0">
+    <h2 class="text-lg font-semibold">Search Passages</h2>
+    <p class="text-sm text-slate-500 mt-0.5">Semantic search — finds passages by meaning, not just exact words.</p>
+  </div>
+  <div class="flex-1 overflow-y-auto p-6">
+    <div class="max-w-2xl space-y-4">
+
+      <!-- Search bar -->
+      <div class="flex gap-2">
+        <input id="search-input" type="text" class="input flex-1"
+               data-i18n-placeholder="search_placeholder"
+               placeholder="Search for words, phrases, or ideas…"
+               onkeydown="if(event.key==='Enter') doSearch()"/>
+        <select id="search-book-filter" class="input w-44 shrink-0">
+          <option value="">All books</option>
+        </select>
+        <button onclick="doSearch()"
+                class="bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium
+                       px-4 py-2 rounded-lg transition-colors shrink-0">Search</button>
+      </div>
+
+      <!-- Status / empty state -->
+      <div id="search-status" class="text-xs text-slate-600 italic hidden"></div>
+
+      <!-- Results -->
+      <div id="search-results" class="space-y-3"></div>
+    </div>
+  </div>
+</section>
+
+<section id="section-settings" class="flex-1 flex flex-col overflow-hidden hidden">
+  <div class="p-6 border-b border-slate-800 shrink-0">
+    <h2 class="text-lg font-semibold" data-i18n="sec_settings_title">Settings</h2>
+    <p id="settings-desc" class="text-sm text-slate-500 mt-0.5">LLM provider — changes are written to <code class="text-violet-400 text-xs">config.toml</code>.</p>
+  </div>
+
+  <div class="flex-1 overflow-y-auto p-6">
+    <div class="max-w-lg space-y-6">
+
+      <!-- Provider selector -->
+      <div class="card space-y-4">
+        <div>
+          <label class="text-xs text-slate-500 font-medium block mb-2" data-i18n="lbl_provider">PROVIDER</label>
+          <div class="grid grid-cols-4 gap-2" id="provider-btns">
+            <button onclick="selectProvider('anthropic')"
+                    class="provider-btn p-3 rounded-lg border border-slate-700 text-xs text-center
+                           hover:border-violet-600 transition-colors flex flex-col items-center gap-1.5">
+              <span class="text-lg">🔷</span>Anthropic
+            </button>
+            <button onclick="selectProvider('openai')"
+                    class="provider-btn p-3 rounded-lg border border-slate-700 text-xs text-center
+                           hover:border-violet-600 transition-colors flex flex-col items-center gap-1.5">
+              <span class="text-lg">🟢</span>OpenAI
+            </button>
+            <button onclick="selectProvider('gemini')"
+                    class="provider-btn p-3 rounded-lg border border-slate-700 text-xs text-center
+                           hover:border-violet-600 transition-colors flex flex-col items-center gap-1.5">
+              <span class="text-lg">🔴</span>Gemini
+            </button>
+            <button onclick="selectProvider('local')"
+                    class="provider-btn p-3 rounded-lg border border-slate-700 text-xs text-center
+                           hover:border-violet-600 transition-colors flex flex-col items-center gap-1.5">
+              <span class="text-lg">🖥️</span>Local
+            </button>
+          </div>
+        </div>
+
+        <!-- API key (hidden for local) -->
+        <div id="field-api-key">
+          <label class="text-xs text-slate-500 font-medium block mb-2" data-i18n="lbl_api_key">API KEY</label>
+          <input id="cfg-api-key" type="password" class="input"
+                 placeholder="Leave empty to use env var (ANTHROPIC_API_KEY etc.)"/>
+          <p class="text-xs text-slate-600 mt-1">Stored in config.toml. Env var takes precedence if both are set.</p>
+        </div>
+
+        <!-- Base URL (shown for openai + local) -->
+        <div id="field-base-url" class="hidden">
+          <label class="text-xs text-slate-500 font-medium block mb-2" data-i18n="lbl_base_url">BASE URL</label>
+          <input id="cfg-base-url" class="input" placeholder="http://localhost:8080/v1"/>
+          <p class="text-xs text-slate-600 mt-1">
+            llama.cpp: <code class="text-violet-400">http://localhost:8080/v1</code> ·
+            Ollama: <code class="text-violet-400">http://localhost:11434/v1</code>
+          </p>
+        </div>
+
+        <!-- Models -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs text-slate-500 font-medium block mb-2" data-i18n="lbl_answer_model">ANSWER MODEL</label>
+            <input id="cfg-answer-model" class="input" placeholder="model name"/>
+          </div>
+          <div>
+            <label class="text-xs text-slate-500 font-medium block mb-2" data-i18n="lbl_expand_model">EXPAND MODEL <span class="text-slate-600">(fast)</span></label>
+            <input id="cfg-expand-model" class="input" placeholder="model name"/>
+            <p id="expand-model-hint" class="text-xs text-slate-600 mt-1.5">Used to generate search query variants — use a fast, cheap model here.</p>
+          </div>
+        </div>
+
+        <!-- Context limit (visible for local, optional for others) -->
+        <div id="field-context-limit">
+          <label class="text-xs text-slate-500 font-medium block mb-2">
+            CONTEXT WINDOW <span class="text-slate-600">(tokens · 0 = unlimited)</span>
+          </label>
+          <input id="cfg-context-limit" type="number" min="0" class="input"
+                 placeholder="e.g. 4096 — must match --ctx-size for llama.cpp"/>
+          <p class="text-xs text-slate-600 mt-1">
+            BookGraph trims retrieved sections to stay under this limit before sending to the model.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-3 pt-1">
+          <button onclick="saveSettings()" data-i18n="btn_save"
+                  class="bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium
+                         px-4 py-2 rounded-lg transition-colors">Save &amp; Reload</button>
+          <span id="settings-msg" class="text-xs text-slate-500 hidden"></span>
+        </div>
+      </div>
+
+      <!-- Quick reference -->
+      <div class="card">
+        <h3 class="text-xs font-semibold text-slate-500 mb-3" data-i18n="quick_ref_title">QUICK REFERENCE</h3>
+        <div class="space-y-2 text-xs text-slate-400">
+          <p><span class="text-violet-400 font-mono">anthropic</span> → set <code class="text-slate-300">ANTHROPIC_API_KEY</code></p>
+          <p><span class="text-violet-400 font-mono">openai</span> → set <code class="text-slate-300">OPENAI_API_KEY</code></p>
+          <p><span class="text-violet-400 font-mono">gemini</span> → set <code class="text-slate-300">GEMINI_API_KEY</code></p>
+          <p><span class="text-violet-400 font-mono">local</span> → start <code class="text-slate-300">llama-server -m model.gguf --port 8080</code></p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+</main><!-- /main -->
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     JAVASCRIPT
+═════════════════════════════════════════════════════════════════════════ -->
+<script>
+// ── i18n ─────────────────────────────────────────────────────────────────────
+const LANG = {
+  en: {
+    lbl_language:'Interface', nav_library:'Library', nav_query:'Query',
+    nav_tasks:'Book Analysis', nav_search:'Search', nav_settings:'Settings',
+    sec_library_title:'Library',
+    sec_library_desc:'Add books as PDF or EPUB — they are indexed locally.',
+    upload_prompt:'Drop a PDF or EPUB here, or', upload_browse:'click to browse',
+    upload_formats:'Supports .pdf · .epub', ingest_lang_label:'Language',
+    ingest_lang_auto:'Auto-detect',
+    ingest_lang_hint:'Auto-detect works well for full books.',
+    empty_library:'No books yet — upload one above to get started.',
+    sec_query_title:'Query',
+    sec_query_desc:'Ask complex questions across all your books.',
+    query_allbooks:'All books',
+    query_placeholder:'Who is connected to John and how? What motivates the antagonist?…',
+    search_placeholder:'Search for words, phrases, or ideas…',
+    sec_search_title:'Search Passages', sec_search_desc:'Semantic search — finds passages by meaning, not just exact words.',
+    top_k_tooltip:'How many book sections to include as context for the answer (more = broader coverage, slower)',
+    expand_model_hint:'Used to generate search query variants — use a fast, cheap model here.',
+    sec_tasks_title:'Book Analysis',
+    sec_tasks_desc:'Character map, timeline, and profiles — all from your book.',
+    tasks_select:'— Select a book —',
+    cta_title:'Ready to analyse',
+    cta_desc:'Generate a character map, relationship graph, and timeline from your book passages.',
+    cta_btn:'Start Book Analysis',
+    map_title:'Character Relationship Map', from_cache:'from cache',
+    btn_reanalyze:'↻ Re-analyze', btn_fit:'⊡ Fit', btn_svg:'↓ PNG',
+    tab_map:'Character Map', tab_timeline:'Timeline',
+    tab_characters:'Characters', tab_chapters:'Chapters', tab_profiles:'Profiles',
+    chapters_empty:'No chapters found.',
+    back_to_chapters:'← Chapters', ch_sections:'sections', ch_generate:'Generate Summary',
+    back_to_profiles:'← Profiles',
+    profile_section_title:'Character Profile', btn_regenerate:'↻ Regenerate', btn_save_pdf:'↓ PDF',
+    sec_settings_title:'Settings',
+    sec_settings_desc:'LLM provider — changes are written to',
+    lbl_provider:'PROVIDER', lbl_api_key:'API KEY', lbl_base_url:'BASE URL',
+    lbl_answer_model:'ANSWER MODEL', lbl_expand_model:'EXPAND MODEL',
+    lbl_expand_fast:'fast',
+    lbl_context_limit:'CONTEXT WINDOW', lbl_ctx_hint:'tokens · 0 = unlimited',
+    btn_save:'Save & Reload', quick_ref_title:'QUICK REFERENCE',
+    confirm_remove:'Remove this book from the index?',
+    connections:'Connections', no_connections:'No connections found.',
+    key_events:'Key Events', view_profile:'👤 View Profile',
+    gen_profile:'👤 Generate Profile →',
+    analyzing_rel:'Analyzing relationship…',
+    profile_eyebrow:'— ◆ CHARACTER PROFILE ◆ —',
+    sources_label:'SOURCES',
+    no_chars:'No characters extracted.',
+    no_events:'No events extracted — regenerate the map to populate the timeline.',
+  },
+  es: {
+    lbl_language:'Interfaz', nav_library:'Biblioteca', nav_query:'Consulta',
+    nav_tasks:'Análisis', nav_search:'Buscar', nav_settings:'Configuración',
+    sec_library_title:'Biblioteca',
+    sec_library_desc:'Añade libros en PDF o EPUB — se indexan localmente.',
+    upload_prompt:'Arrastra un PDF o EPUB aquí, o', upload_browse:'haz clic para buscar',
+    upload_formats:'Admite .pdf · .epub', ingest_lang_label:'Idioma',
+    ingest_lang_auto:'Detección automática',
+    ingest_lang_hint:'La detección funciona bien para libros completos.',
+    empty_library:'Sin libros — sube uno arriba para empezar.',
+    sec_query_title:'Consulta',
+    sec_query_desc:'Haz preguntas complejas sobre todos tus libros.',
+    query_allbooks:'Todos los libros',
+    query_placeholder:'¿Quién está conectado con Juan y cómo? ¿Qué motiva al antagonista?…',
+    search_placeholder:'Busca palabras, frases o ideas…',
+    sec_search_title:'Buscar Pasajes', sec_search_desc:'Búsqueda semántica — encuentra pasajes por significado, no solo palabras exactas.',
+    top_k_tooltip:'Cuántas secciones del libro incluir como contexto (más = cobertura más amplia, más lento)',
+    expand_model_hint:'Se usa para generar variantes de búsqueda — usa un modelo rápido y económico aquí.',
+    sec_tasks_title:'Análisis del libro',
+    sec_tasks_desc:'Mapa de personajes, cronología y perfiles — todo desde tu libro.',
+    tasks_select:'— Selecciona un libro —',
+    cta_title:'Listo para analizar',
+    cta_desc:'Genera un mapa de personajes, grafo de relaciones y cronología a partir de tus pasajes.',
+    cta_btn:'Iniciar análisis',
+    map_title:'Mapa de relaciones', from_cache:'desde caché',
+    btn_reanalyze:'↻ Re-analizar', btn_fit:'⊡ Ajustar', btn_svg:'↓ PNG',
+    tab_map:'Mapa', tab_timeline:'Cronología',
+    tab_characters:'Personajes', tab_chapters:'Capítulos', tab_profiles:'Perfiles',
+    chapters_empty:'No se encontraron capítulos.',
+    back_to_chapters:'← Capítulos', ch_sections:'secciones', ch_generate:'Generar resumen',
+    back_to_profiles:'← Perfiles',
+    profile_section_title:'Perfil del personaje', btn_regenerate:'↻ Regenerar', btn_save_pdf:'↓ PDF',
+    sec_settings_title:'Configuración',
+    sec_settings_desc:'Proveedor LLM — los cambios se guardan en',
+    lbl_provider:'PROVEEDOR', lbl_api_key:'CLAVE API', lbl_base_url:'URL BASE',
+    lbl_answer_model:'MODELO RESPUESTA', lbl_expand_model:'MODELO EXPANSIÓN',
+    lbl_expand_fast:'rápido',
+    lbl_context_limit:'VENTANA CONTEXTO', lbl_ctx_hint:'tokens · 0 = sin límite',
+    btn_save:'Guardar y recargar', quick_ref_title:'REFERENCIA RÁPIDA',
+    confirm_remove:'¿Eliminar este libro del índice?',
+    connections:'Conexiones', no_connections:'Sin conexiones encontradas.',
+    key_events:'Eventos clave', view_profile:'👤 Ver perfil',
+    gen_profile:'👤 Generar perfil →',
+    analyzing_rel:'Analizando relación…',
+    profile_eyebrow:'— ◆ PERFIL DEL PERSONAJE ◆ —',
+    sources_label:'FUENTES',
+    no_chars:'No se extrajeron personajes.',
+    no_events:'Sin eventos — regenera el mapa para ver la cronología.',
+  },
+};
+
+let _lang = localStorage.getItem('bookgraph_lang') || 'en';
+
+function _t(key) { return (LANG[_lang] || LANG.en)[key] || LANG.en[key] || key; }
+
+function setLang(lang) {
+  _lang = lang;
+  localStorage.setItem('bookgraph_lang', lang);
+  const t = LANG[lang] || LANG.en;
+
+  // Lang toggle button styles
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    const active = btn.id === `lang-${lang}`;
+    btn.classList.toggle('bg-violet-900',  active);
+    btn.classList.toggle('text-violet-300', active);
+    btn.classList.toggle('bg-transparent', !active);
+    btn.classList.toggle('text-slate-500', !active);
+  });
+
+  // Nav text nodes (each button has SVG + text node, no wrapper needed)
+  const navMap = { 'nav-library': 'nav_library', 'nav-query': 'nav_query',
+                   'nav-tasks': 'nav_tasks', 'nav-search': 'nav_search', 'nav-settings': 'nav_settings' };
+  Object.entries(navMap).forEach(([id, key]) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.childNodes.forEach(node => {
+      if (node.nodeType === 3 && node.textContent.trim())
+        node.textContent = '\n      ' + t[key] + '\n    ';
+    });
+  });
+
+  // All simple data-i18n elements
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (t[key] !== undefined) el.textContent = t[key];
+  });
+
+  // data-i18n-placeholder
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.dataset.i18nPlaceholder;
+    if (t[key] !== undefined) el.placeholder = t[key];
+  });
+
+  // Elements with mixed HTML content
+  const uploadP = document.querySelector('#drop-zone .text-center p.text-sm');
+  if (uploadP) uploadP.innerHTML =
+    `${t.upload_prompt} <span class="text-violet-400">${t.upload_browse}</span>`;
+
+  const settingsDesc = document.getElementById('settings-desc');
+  if (settingsDesc) settingsDesc.innerHTML =
+    `${t.sec_settings_desc} <code class="text-violet-400 text-xs">config.toml</code>.`;
+
+  const expandLbl = document.querySelector('label[data-i18n="lbl_expand_model"]');
+  if (expandLbl) expandLbl.innerHTML =
+    `${t.lbl_expand_model} <span class="text-slate-600">(${t.lbl_expand_fast})</span>`;
+
+  const ctxLbl = document.querySelector('#field-context-limit label');
+  if (ctxLbl) ctxLbl.innerHTML =
+    `${t.lbl_context_limit} <span class="text-slate-600">(${t.lbl_ctx_hint})</span>`;
+
+  // Dynamic title attributes
+  const topkEl = document.getElementById('query-top-k');
+  if (topkEl) topkEl.title = t.top_k_tooltip;
+  const expandHintEl = document.getElementById('expand-model-hint');
+  if (expandHintEl) expandHintEl.textContent = t.expand_model_hint;
+
+  // Search section header
+  const searchTitle = document.querySelector('#section-search h2');
+  if (searchTitle) searchTitle.textContent = t.sec_search_title;
+  const searchDesc = document.querySelector('#section-search p');
+  if (searchDesc) searchDesc.textContent = t.sec_search_desc;
+
+  // Refresh picker placeholder (book titles don't translate, but the empty-state text does)
+  _updateBookPickerDisplay(document.getElementById('tasks-book-select')?.value || '');
+}
+
+const PROVIDER_LOGO = {
+  anthropic: `<svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="7" fill="#e8632a22"/>
+    <path d="M14 7L20 22H17.5L16.2 18.5H11.8L10.5 22H8L14 7Z M14 11.8L12.7 15.8H15.3Z" fill="#e8632a"/>
+  </svg>`,
+  openai: `<svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="7" fill="#10a37f22"/>
+    <circle cx="14" cy="14" r="6.5" stroke="#10a37f" stroke-width="1.5"/>
+    <circle cx="14" cy="14" r="3" fill="#10a37f"/>
+  </svg>`,
+  gemini: `<svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="7" fill="#4285f422"/>
+    <path d="M14 4.5C14 4.5 15 12 23.5 14C15 16 14 23.5 14 23.5C14 23.5 13 16 4.5 14C13 12 14 4.5 14 4.5Z" fill="#4285f4"/>
+  </svg>`,
+  local: `<svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <rect width="28" height="28" rx="7" fill="#a78bfa22"/>
+    <rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="#a78bfa" stroke-width="1.5"/>
+    <rect x="11" y="11" width="6" height="6" rx="1" fill="#a78bfa" opacity="0.55"/>
+    <line x1="8" y1="11.5" x2="5.5" y2="11.5" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="8" y1="14" x2="5.5" y2="14" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="8" y1="16.5" x2="5.5" y2="16.5" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="20" y1="11.5" x2="22.5" y2="11.5" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="20" y1="14" x2="22.5" y2="14" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="20" y1="16.5" x2="22.5" y2="16.5" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+  </svg>`,
+};
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+let _books      = [];
+let _activeTask = null;
+let _cfgProvider = 'anthropic';
+
+document.addEventListener('DOMContentLoaded', () => {
+  setLang(_lang);
+  loadBooks();
+  loadConfig();
+});
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function showSection(name) {
+  ['library','query','tasks','search','settings'].forEach(s => {
+    document.getElementById(`section-${s}`).classList.toggle('hidden', s !== name);
+    document.getElementById(`nav-${s}`).classList.toggle('active', s === name);
+  });
+}
+
+// ── Books ─────────────────────────────────────────────────────────────────────
+async function loadBooks() {
+  _books = await fetch('/api/books').then(r => r.json());
+  renderBooks();
+  populateBookSelects();
+}
+
+function renderBooks() {
+  const grid  = document.getElementById('book-grid');
+  const empty = document.getElementById('empty-library');
+  const cnt   = document.getElementById('book-count');
+
+  cnt.textContent = _books.length;
+  cnt.classList.toggle('hidden', _books.length === 0);
+
+  if (!_books.length) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+
+  const langBadge = l => {
+    const map = { en: ['EN','bg-blue-950 text-blue-300'], es: ['ES','bg-yellow-950 text-yellow-300'], fr: ['FR','bg-red-950 text-red-300'] };
+    const [label, cls] = map[l] || ['??','bg-slate-800 text-slate-500'];
+    return `<span class="badge ${cls}">${label}</span>`;
+  };
+
+  grid.innerHTML = _books.map(b => {
+    const cacheLinks = [];
+    if (b.has_map)
+      cacheLinks.push(`<button onclick="event.stopPropagation(); goToCharMap('${b.id}')"
+          class="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
+          🕸️ Map</button>`);
+    (b.profiles || []).forEach(p =>
+      cacheLinks.push(`<button onclick="event.stopPropagation(); goToProfile('${b.id}','${esc(p.name)}')"
+          class="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
+          👤 ${esc(p.name)}</button>`)
+    );
+
+    return `
+    <div class="card flex gap-4 cursor-pointer hover:border-violet-800/50 transition-colors"
+         onclick="goToBookAnalysis('${b.id}')">
+      <img src="/api/books/${b.id}/cover"
+           class="w-14 h-20 object-cover rounded-lg shadow-md shrink-0 self-start bg-slate-800"
+           onerror="this.replaceWith(document.getElementById('cover-placeholder').content.cloneNode(true))"
+           alt=""/>
+      <div class="flex-1 min-w-0 flex flex-col gap-2">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <h3 class="font-semibold text-sm truncate" title="${esc(b.title)}">${esc(b.title)}</h3>
+            <p class="text-xs text-slate-500 mt-0.5">${esc(b.author)}</p>
+          </div>
+          <button onclick="event.stopPropagation(); deleteBook('${b.id}')"
+                  class="shrink-0 flex items-center gap-1 text-xs text-slate-400 hover:text-red-300
+                         bg-slate-800 hover:bg-red-900/40 border border-slate-700 hover:border-red-700/60
+                         px-2 py-1 rounded-md transition-colors"
+                  title="Remove book">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            Remove
+          </button>
+        </div>
+        <div class="flex gap-2 flex-wrap items-center">
+          ${langBadge(b.language)}
+          <span class="badge bg-slate-800 text-slate-400">${b.chapters} ch.</span>
+          <span class="badge bg-slate-800 text-slate-400">${b.passages.toLocaleString()} passages</span>
+        </div>
+        ${cacheLinks.length
+          ? `<div class="flex gap-3 flex-wrap pt-1 border-t border-slate-800/60">${cacheLinks.join('')}</div>`
+          : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function populateBookSelects() {
+  const qSel = document.getElementById('query-book-filter');
+  const tSel = document.getElementById('tasks-book-select');
+  const sSel = document.getElementById('search-book-filter');
+  const qVal = qSel?.value || '';
+  const tVal = tSel?.value || '';
+  const sVal = sSel?.value || '';
+
+  // Single pass: build option HTML for all three selects at once
+  let qOpts = '', tOpts = '';
+  for (const b of _books) {
+    const opt = `<option value="${b.id}">${esc(b.title)}</option>`;
+    qOpts += `<option value="${esc(b.title)}">${esc(b.title)}</option>`;
+    tOpts += opt;
+  }
+  qSel.innerHTML = `<option value="">${_t('query_allbooks')}</option>` + qOpts;
+  tSel.innerHTML = `<option value="">${_t('tasks_select')}</option>` + tOpts;
+  sSel.innerHTML = `<option value="">${_lang === 'es' ? 'Todos los libros' : 'All books'}</option>` + tOpts;
+
+  if (qVal) qSel.value = qVal;
+  if (tVal) tSel.value = tVal;
+  if (sVal) sSel.value = sVal;
+
+  _buildBookPickerList();
+}
+
+// ── Book picker ───────────────────────────────────────────────────────────────
+
+function toggleBookPicker() {
+  const dd  = document.getElementById('book-picker-dropdown');
+  const chv = document.getElementById('book-picker-chevron');
+  const open = !dd.classList.contains('hidden');
+  dd.classList.toggle('hidden', open);
+  chv.style.transform = open ? '' : 'rotate(180deg)';
+  if (!open) {
+    setTimeout(() => document.addEventListener('click', _bookPickerOutside, { once: true }), 0);
+  }
+}
+
+function _bookPickerOutside(e) {
+  const picker = document.getElementById('book-picker');
+  if (picker && !picker.contains(e.target)) _closeBookPicker();
+  else document.addEventListener('click', _bookPickerOutside, { once: true });
+}
+
+function _closeBookPicker() {
+  document.getElementById('book-picker-dropdown').classList.add('hidden');
+  const chv = document.getElementById('book-picker-chevron');
+  if (chv) chv.style.transform = '';
+}
+
+function selectBook(bookId) {
+  const sel = document.getElementById('tasks-book-select');
+  if (sel) sel.value = bookId;
+  _updateBookPickerDisplay(bookId);
+}
+
+function _updateBookPickerDisplay(bookId) {
+  const book   = (_books || []).find(b => b.id === bookId);
+  const thumb  = document.getElementById('book-picker-thumb');
+  const title  = document.getElementById('book-picker-title');
+  const author = document.getElementById('book-picker-author');
+  if (!thumb || !title || !author) return;
+
+  const BOOK_ICON = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+  </svg>`;
+
+  if (!book) {
+    thumb.innerHTML = BOOK_ICON;
+    thumb.className = 'w-8 h-11 rounded-md bg-slate-700/80 shrink-0 overflow-hidden flex items-center justify-center text-slate-600';
+    title.textContent = _t('tasks_select');
+    title.className   = 'text-sm font-medium text-slate-400 truncate';
+    author.classList.add('hidden');
+    return;
+  }
+
+  const img = new Image();
+  img.className = 'w-full h-full object-cover';
+  img.onload  = () => { thumb.innerHTML = ''; thumb.className = 'w-8 h-11 rounded-md shrink-0 overflow-hidden'; thumb.appendChild(img); };
+  img.onerror = () => { thumb.innerHTML = BOOK_ICON; thumb.className = 'w-8 h-11 rounded-md bg-slate-700/80 shrink-0 overflow-hidden flex items-center justify-center text-slate-600'; };
+  img.src = `/api/books/${book.id}/cover`;
+
+  title.textContent  = book.title;
+  title.className    = 'text-sm font-medium text-slate-100 truncate';
+  author.textContent = book.author;
+  author.classList.remove('hidden');
+}
+
+function _buildBookPickerList() {
+  const list = document.getElementById('book-picker-list');
+  if (!list) return;
+
+  if (!_books.length) {
+    list.innerHTML = `<p class="text-xs text-slate-600 px-3 py-4 text-center">
+      ${_lang === 'es' ? 'Sin libros en la biblioteca' : 'No books in library'}</p>`;
+    return;
+  }
+
+  const curId = document.getElementById('tasks-book-select')?.value || '';
+  list.innerHTML = _books.map(b => {
+    const active = b.id === curId;
+    return `
+      <button onclick="selectBook('${b.id}'); _closeBookPicker(); onBookSelect();"
+              class="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg transition-colors text-left
+                     ${active ? 'bg-violet-900/40 border border-violet-800/60' : 'hover:bg-slate-800 border border-transparent'}">
+        <div class="w-8 h-11 rounded-md bg-slate-800 shrink-0 overflow-hidden flex items-center justify-center text-slate-600">
+          <img src="/api/books/${b.id}/cover" class="w-full h-full object-cover"
+               onerror="this.style.display='none'" loading="lazy"/>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium truncate ${active ? 'text-violet-200' : 'text-slate-200'}">${esc(b.title)}</p>
+          <p class="text-xs text-slate-500 truncate mt-0.5">${esc(b.author)}</p>
+        </div>
+        ${b.has_map ? '<span class="text-xs text-violet-500 shrink-0" title="Map cached">🕸️</span>' : ''}
+      </button>`;
+  }).join('');
+}
+
+async function deleteBook(id) {
+  if (!confirm(_t('confirm_remove'))) return;
+  await fetch(`/api/books/${id}`, { method: 'DELETE' });
+  loadBooks();
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── Upload / Ingest ───────────────────────────────────────────────────────────
+function onDragOver(e)  { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); }
+function onDragLeave(e) { document.getElementById('drop-zone').classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) startIngest(file);
+}
+
+async function startIngest(file) {
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file',     file);
+  fd.append('title',    document.getElementById('ingest-title').value.trim());
+  fd.append('author',   document.getElementById('ingest-author').value.trim());
+  fd.append('language', document.getElementById('ingest-lang').value);
+
+  document.getElementById('ingest-file-name').textContent = file.name;
+  showProgress(true);
+  setIngestBar(5, 'Starting', 'Uploading…');
+
+  const { job_id } = await fetch('/api/ingest', { method: 'POST', body: fd }).then(r => r.json());
+  if (!job_id) { showProgress(false); return; }
+
+  const stageMap = { parsing: 10, chunking: 30, embedding: 55, storing: 88, done: 100 };
+
+  const es = new EventSource(`/api/ingest/${job_id}`);
+  es.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.error) { setIngestBar(0, 'Error', d.error); es.close(); return; }
+    const pct = stageMap[d.stage] || (d.done ? 100 : 50);
+    setIngestBar(pct, d.stage || 'working', d.msg || '');
+    if (d.done) {
+      es.close();
+      setTimeout(() => { showProgress(false); loadBooks(); }, 1500);
+    }
+  };
+  es.onerror = () => { setIngestBar(0, 'Error', 'Connection lost.'); es.close(); };
+}
+
+function showProgress(show) {
+  document.getElementById('ingest-progress').classList.toggle('hidden', !show);
+}
+function setIngestBar(pct, stage, msg) {
+  document.getElementById('ingest-bar').style.width = pct + '%';
+  document.getElementById('ingest-stage-badge').textContent = stage;
+  document.getElementById('ingest-msg').innerHTML = `<span class="stage-dot"></span>${esc(msg)}`;
+}
+
+// ── Query ─────────────────────────────────────────────────────────────────────
+let _queryBusy = false;
+
+async function sendQuery() {
+  if (_queryBusy) return;
+  const input = document.getElementById('query-input');
+  const q     = input.value.trim();
+  if (!q) return;
+
+  input.value = '';
+  _queryBusy  = true;
+  document.getElementById('query-btn').disabled = true;
+
+  appendMessage('user', q);
+  const answerEl = appendMessage('assistant', '');
+  const textEl   = answerEl.querySelector('.msg-text');
+  const stagEl   = answerEl.querySelector('.msg-stage');
+  const srcEl    = answerEl.querySelector('.msg-sources');
+
+  let accumulated = '', renderPending = false;
+
+  const es = new EventSource(`/api/query/stream?_=${Date.now()}`);
+
+  // We POST via fetch since EventSource only does GET; use a small trick:
+  // close the GET EventSource and reopen with POST via fetch + ReadableStream.
+  es.close();
+
+  const resp = await fetch('/api/query/stream', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      question:   q,
+      book_title: document.getElementById('query-book-filter').value,
+      top_k:      parseInt(document.getElementById('query-top-k').value),
+    }),
+  });
+
+  const reader = resp.body.getReader();
+  const dec    = new TextDecoder();
+  let buf      = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const d = JSON.parse(line.slice(6));
+      if (d.error) { textEl.innerHTML = `<span class="text-red-400">${esc(d.error)}</span>`; break; }
+      if (d.stage) { stagEl.textContent = d.msg || d.stage; stagEl.classList.remove('hidden'); }
+      if (d.type === 'text') {
+        accumulated += d.text;
+        stagEl.classList.add('hidden');
+        if (!renderPending) {
+          renderPending = true;
+          requestAnimationFrame(() => {
+            textEl.innerHTML = marked.parse(accumulated);
+            answerEl.scrollIntoView({ block: 'end', behavior: 'smooth' });
+            renderPending = false;
+          });
+        }
+      }
+      if (d.done && d.sources?.length) {
+        srcEl.classList.remove('hidden');
+        srcEl.innerHTML = `<p class="text-xs text-slate-600 font-medium mb-1">${_t('sources_label')}</p>`
+          + d.sources.map(s => `<p class="text-xs text-slate-500">• ${esc(s.book)} — ${esc(s.chapter)}</p>`).join('');
+      }
+    }
+  }
+
+  _queryBusy = false;
+  document.getElementById('query-btn').disabled = false;
+}
+
+function appendMessage(role, text) {
+  const wrap = document.getElementById('query-messages');
+  const isUser = role === 'user';
+  const div = document.createElement('div');
+  div.className = 'flex gap-3';
+  div.innerHTML = `
+    <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5
+                ${isUser ? 'bg-violet-700' : 'bg-emerald-800'}">
+      ${isUser ? 'Q' : 'A'}
+    </div>
+    <div class="flex-1 min-w-0">
+      ${isUser
+        ? `<p class="text-sm text-slate-300">${esc(text)}</p>`
+        : `<div class="msg-stage text-xs text-slate-500 mb-1 hidden"></div>
+           <div class="msg-text prose-dark text-sm"></div>
+           <div class="msg-sources mt-2 hidden"></div>`}
+    </div>`;
+  wrap.appendChild(div);
+  div.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  return div;
+}
+
+// ── Library → Tasks shortcuts ─────────────────────────────────────────────────
+function goToBookAnalysis(bookId) {
+  showSection('tasks');
+  selectBook(bookId);
+  onBookSelect();
+}
+
+function goToCharMap(bookId) {
+  showSection('tasks');
+  selectBook(bookId);
+  _showTaskOutput();
+  execCharMap(bookId);
+}
+
+function goToProfile(bookId, charName) {
+  showSection('tasks');
+  selectBook(bookId);
+  _showTaskOutput();
+  openCharProfile(charName);
+}
+
+// ── Book Analysis ─────────────────────────────────────────────────────────────
+function _showTaskOutput() {
+  document.getElementById('analysis-cta').classList.add('hidden');
+  document.getElementById('task-output').classList.remove('hidden');
+  document.getElementById('analysis-card').classList.remove('hidden');
+}
+
+function _hidePreviousResults() {
+  document.getElementById('analysis-cta').classList.add('hidden');
+  document.getElementById('task-output').classList.add('hidden');
+  document.getElementById('analysis-card').classList.add('hidden');
+  document.getElementById('task-status').classList.add('hidden');
+  document.getElementById('char-info-panel').classList.add('hidden');
+  document.getElementById('rel-panel').classList.add('hidden');
+  _chaptersBookId = null;
+  _stopFunMessages();
+  _setProgress(0);
+}
+
+function onBookSelect() {
+  _hidePreviousResults();
+  const bookId = document.getElementById('tasks-book-select').value;
+  if (!bookId) return;
+
+  const book = (_books || []).find(b => b.id === bookId);
+  if (book?.has_map) {
+    _showTaskOutput();
+    execCharMap(bookId);
+  } else {
+    const desc = document.getElementById('analysis-cta-desc');
+    if (desc && book) desc.textContent = _t('cta_desc');
+    document.getElementById('analysis-cta').classList.remove('hidden');
+  }
+}
+
+function startAnalysis() {
+  _showTaskOutput();
+  execCharMap();
+}
+
+function openCharProfile(charName) {
+  const bookId = document.getElementById('tasks-book-select').value;
+  if (!bookId || !charName) return;
+
+  document.getElementById('char-name-input').value = charName;
+  _showTaskOutput();
+  showAnalysisTab('profiles', document.querySelector('.analysis-tab[data-tab="profiles"]'));
+
+  const book     = (_books || []).find(b => b.id === bookId);
+  const isCached = (book?.profiles || []).some(p => p.name === charName);
+
+  document.getElementById('char-chart-title').textContent = charName;
+  document.getElementById('char-chart-cached-badge').classList.add('hidden');
+  document.getElementById('char-chart-sources').classList.add('hidden');
+  document.getElementById('profiles-grid').classList.add('hidden');
+  document.getElementById('profiles-detail').classList.remove('hidden');
+
+  const content = document.getElementById('char-chart-content');
+  if (isCached) {
+    execCharChart(false);
+  } else {
+    content.innerHTML = `
+      <div class="flex flex-col items-center gap-4 py-10 text-center">
+        <div class="text-4xl">👤</div>
+        <p class="text-slate-400 text-sm">
+          ${_lang === 'es' ? 'Sin perfil aún para' : 'No profile yet for'} <strong class="text-slate-200">${esc(charName)}</strong>
+        </p>
+        <button onclick="execCharChart()" class="btn-primary px-5 py-2">
+          ✦ ${_lang === 'es' ? 'Generar perfil' : 'Generate Profile'}
+        </button>
+      </div>`;
+  }
+}
+
+async function execCharMap(bookId, regen = false) {
+  bookId = bookId || document.getElementById('tasks-book-select').value;
+  if (!bookId) return;
+
+  showTaskStatus('Starting…', 5);
+  document.getElementById('analysis-card').classList.add('hidden');
+  document.getElementById('char-map-cached-badge').classList.add('hidden');
+
+  const stagePct = { searching: 12, discovering: 30, expanding: 48, analyzing: 62, waiting: 72 };
+  const url = `/api/tasks/character-map/${bookId}` + (regen ? '?regen=true' : '');
+
+  const resp = await fetch(url);
+  const reader = resp.body.getReader();
+  const dec    = new TextDecoder();
+  let buf      = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const d = JSON.parse(line.slice(6));
+      if (d.error)  { showCharMapError(d.error, d.raw || ''); return; }
+      if (d.stage)  {
+        const pct = stagePct[d.stage] || 30;
+        showTaskStatus(d.msg || d.stage, pct);
+        if (d.stage === 'discovering') _creepProgress(35, 15000);
+        if (d.stage === 'expanding')   _creepProgress(55, 10000);
+        if (d.stage === 'analyzing')   _creepProgress(88, 90000);
+      }
+      if (d.done)   { await renderCharMap(d); }
+    }
+  }
+}
+
+// ── Character Map ──────────────────────────────────────────────────────────────
+
+const NODE_STYLE = {
+  protagonist: { bg:'#5b21b6', border:'#a78bfa', hbg:'#7c3aed', hborder:'#c4b5fd', size:24, fontColor:'#e2d9f3', fontSize:13 },
+  antagonist:  { bg:'#991b1b', border:'#fca5a5', hbg:'#b91c1c', hborder:'#fecaca', size:20, fontColor:'#fde8e8', fontSize:12 },
+  supporting:  { bg:'#0e7490', border:'#67e8f9', hbg:'#0891b2', hborder:'#a5f3fc', size:16, fontColor:'#cffafe', fontSize:11 },
+  minor:       { bg:'#1e293b', border:'#475569', hbg:'#334155', hborder:'#64748b', size:12, fontColor:'#94a3b8', fontSize:10 },
+};
+const LINK_COLOR = {
+  family: '#8b5cf6', ally: '#06b6d4', enemy: '#ef4444',
+  rival: '#f97316', romantic: '#ec4899', mentor: '#10b981', neutral: '#475569',
+};
+const ROLE_BADGE_CLS = {
+  protagonist: 'bg-violet-900 text-violet-300',
+  antagonist:  'bg-red-900 text-red-300',
+  supporting:  'bg-cyan-900 text-cyan-300',
+  minor:       'bg-slate-700 text-slate-400',
+};
+
+let _network = null, _graphData = null;
+
+function buildVisNetwork(container, data) {
+  _graphData = data;
+  if (_network) { _network.destroy(); _network = null; }
+
+  // Pin the first protagonist at center so the graph radiates outward from them
+  const center = (data.characters||[]).find(c => c.role === 'protagonist');
+
+  const nodes = new vis.DataSet((data.characters||[]).map(c => {
+    const st = NODE_STYLE[c.role] || NODE_STYLE.minor;
+    const isCenter = center && c.id === center.id;
+    return {
+      id: c.id, label: c.name,
+      shape: 'dot', size: st.size,
+      color: { background: st.bg, border: st.border,
+               highlight: { background: st.hbg, border: st.hborder },
+               hover:      { background: st.hbg, border: st.hborder } },
+      font: { color: st.fontColor, size: st.fontSize, face: 'system-ui,sans-serif' },
+      ...(isCenter ? { x: 0, y: 0, fixed: { x: true, y: true }, physics: false } : {}),
+    };
+  }));
+
+  const edges = new vis.DataSet((data.relationships||[]).map((r, i) => {
+    const ec = LINK_COLOR[r.type] || LINK_COLOR.neutral;
+    return {
+      id: i, from: r.from, to: r.to,
+      label: r.label || '',
+      color: { color: ec, opacity: 0.85, highlight: ec, hover: ec },
+      width: 1.5, selectionWidth: 3,
+      font: { color: '#94a3b8', size: 10, strokeWidth: 3, strokeColor: '#020617', align: 'middle' },
+      smooth: { type: 'dynamic' },
+      arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+      _rel: r,
+    };
+  }));
+
+  _network = new vis.Network(container, { nodes, edges }, {
+    layout: { randomSeed: 42 },
+    physics: {
+      enabled: true,
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: {
+        gravitationalConstant: -80,
+        centralGravity: 0.004,
+        springLength: 200,
+        springConstant: 0.06,
+        damping: 0.5,
+        avoidOverlap: 1,
+      },
+      stabilization: { iterations: 300, updateInterval: 50 },
+    },
+    interaction: { hover: true, zoomView: true, dragView: true, dragNodes: true },
+    nodes: { borderWidth: 2, borderWidthSelected: 3 },
+    edges: { width: 1.5 },
+  });
+
+  // Freeze positions once physics settles — nodes stay put after that
+  _network.once('stabilizationIterationsDone', () => {
+    _network.setOptions({ physics: { enabled: false } });
+    _network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+  });
+
+  _network.on('click', params => {
+    if (params.nodes.length) {
+      const c = (data.characters||[]).find(x => x.id === params.nodes[0]);
+      if (c) showCharInfo(c, data);
+    } else if (params.edges.length) {
+      const ed = edges.get(params.edges[0]);
+      const fa = (data.characters||[]).find(x => x.id === ed.from);
+      const fb = (data.characters||[]).find(x => x.id === ed.to);
+      if (fa && fb && ed._rel) showRelPanel(fa, fb, ed._rel, data);
+    } else {
+      document.getElementById('char-info-panel').classList.add('hidden');
+      document.getElementById('rel-panel').classList.add('hidden');
+    }
+  });
+}
+
+function fitGraph() {
+  if (!_network) return;
+  _network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+}
+
+function showCharInfo(char, data) {
+  document.getElementById('char-info-name').textContent = char.name;
+  const roleEl = document.getElementById('char-info-role');
+  roleEl.textContent = char.role || '';
+  roleEl.className = `badge self-start mb-2 ${ROLE_BADGE_CLS[char.role]||ROLE_BADGE_CLS.minor}`;
+  document.getElementById('char-info-desc').textContent = char.description || '—';
+
+  // ── Connections ──────────────────────────────────────────────────────────────
+  const byId = Object.fromEntries((data.characters||[]).map(c=>[c.id,c]));
+  const rels  = (data.relationships||[]).filter(r=>r.from===char.id||r.to===char.id);
+  document.getElementById('char-info-rels').innerHTML = rels.length
+    ? `<p class="text-xs text-slate-600 uppercase tracking-wide font-medium mb-2">${_t('connections')}</p>`
+      + rels.map(r => {
+          const other  = byId[r.from===char.id ? r.to : r.from];
+          const dir    = r.from===char.id ? '→' : '←';
+          const color  = LINK_COLOR[r.type] || LINK_COLOR.neutral;
+          return `<div class="flex gap-2 items-start text-xs mb-3">
+            <span class="font-mono text-slate-600 shrink-0 mt-0.5">${dir}</span>
+            <div class="min-w-0">
+              <span class="text-slate-200 font-medium">${esc(other?.name||'?')}</span>
+              <span class="ml-1.5 text-xs px-1.5 py-0.5 rounded-full font-medium"
+                    style="background:${color}22;color:${color}">${r.type}</span>
+              <br><span class="text-slate-500 italic text-xs">${esc(r.label)}</span>
+            </div>
+          </div>`;
+        }).join('')
+    : `<p class="text-xs text-slate-600">${_t('no_connections')}</p>`;
+
+  // ── Key events involving this character ───────────────────────────────────────
+  const events = (data.events||[]).filter(ev=>(ev.characters||[]).includes(char.id));
+  document.getElementById('char-info-events').innerHTML = events.length
+    ? `<div class="mt-3 pt-3 border-t border-slate-700/60">
+        <p class="text-xs text-slate-600 uppercase tracking-wide font-medium mb-2">${_t('key_events')}</p>
+        ${events.map(ev=>`
+          <div class="mb-2.5">
+            <p class="text-xs font-semibold text-slate-300">${esc(ev.title||'')}</p>
+            <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">${esc(ev.description||'')}</p>
+          </div>`).join('')}
+       </div>`
+    : '';
+
+  // ── Profile shortcut ──────────────────────────────────────────────────────────
+  const bookId  = document.getElementById('tasks-book-select').value;
+  const bk      = (_books||[]).find(b => b.id === bookId);
+  const hasPro  = (bk?.profiles||[]).some(p => p.name === char.name);
+  document.getElementById('char-info-actions').innerHTML = bookId
+    ? `<button onclick="openCharProfile('${esc(char.name)}')"
+              class="mt-2 w-full text-xs py-1.5 rounded-lg transition-colors text-center ${hasPro
+                ? 'bg-violet-900/50 text-violet-300 hover:bg-violet-800/70'
+                : 'bg-slate-700/60 text-slate-400 hover:text-violet-300 hover:bg-slate-700'}">
+         ${hasPro ? _t('view_profile') : _t('gen_profile')}
+       </button>`
+    : '';
+
+  document.getElementById('rel-panel').classList.add('hidden');
+  document.getElementById('char-info-panel').classList.remove('hidden');
+}
+
+function showCharMapError(msg, raw) {
+  showTaskStatus('Error: ' + msg);
+  if (!raw) return;
+  document.getElementById('analysis-card').classList.remove('hidden');
+  if (_network) { _network.destroy(); _network = null; }
+  document.getElementById('char-info-panel').classList.add('hidden');
+  document.getElementById('tab-content-characters').innerHTML = `
+    <div class="col-span-2">
+      <p class="text-xs text-red-400 font-medium mb-2">Model output (for debugging):</p>
+      <pre class="text-xs text-slate-400 bg-slate-950 rounded p-3 overflow-auto max-h-64 whitespace-pre-wrap">${esc(raw.slice(0,2000))}</pre>
+    </div>`;
+  document.getElementById('tab-content-timeline').innerHTML = '';
+}
+
+function renderCharMap(d) {
+  hideTaskStatus();
+  document.getElementById('analysis-card').classList.remove('hidden');
+  document.getElementById('char-info-panel').classList.add('hidden');
+  document.getElementById('char-map-cached-badge').classList.toggle('hidden', !d.cached);
+
+  const container = document.getElementById('graph-cy');
+  buildVisNetwork(container, d.data || {characters:[], relationships:[], events:[]});
+
+  const chars   = d.data?.characters || [];
+  const bookId  = document.getElementById('tasks-book-select').value;
+  const curBook = (_books || []).find(b => b.id === bookId);
+  const cachedProfiles = new Set((curBook?.profiles || []).map(p => p.name));
+
+  // Characters tab
+  const charTab = document.getElementById('tab-content-characters');
+  charTab.innerHTML = chars.map(c => {
+    const has = cachedProfiles.has(c.name);
+    const btnTxt = has ? _t('view_profile') : (_lang === 'es' ? 'Perfil →' : 'Profile →');
+    return `
+      <div class="bg-slate-800/60 rounded-lg p-3 flex gap-3 cursor-pointer hover:bg-slate-700/60 transition-colors"
+           data-char-id="${esc(c.id)}">
+        <span class="shrink-0 mt-1.5 w-2 h-2 rounded-full ${roleColor(c.role)}"></span>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-medium truncate">${esc(c.name)}</p>
+          <p class="text-xs text-slate-400 mt-0.5 truncate">${esc(c.description||'')}</p>
+        </div>
+        <button class="shrink-0 self-center text-xs px-2.5 py-1 rounded-lg transition-colors ${has
+          ? 'bg-violet-900/50 text-violet-300 hover:bg-violet-800/70'
+          : 'bg-slate-700/50 text-slate-500 hover:text-slate-300 hover:bg-slate-700'}"
+                onclick="event.stopPropagation(); openCharProfile('${esc(c.name)}')">
+          ${btnTxt}
+        </button>
+      </div>`;
+  }).join('') || `<p class="text-xs text-slate-600">${_t('no_chars')}</p>`;
+
+  charTab.querySelectorAll('[data-char-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const char = (_graphData?.characters||[]).find(c => c.id === el.dataset.charId);
+      if (char) showCharInfo(char, _graphData);
+    });
+  });
+
+  // Timeline tab
+  const events = d.data?.events || [];
+  const tEl    = document.getElementById('tab-content-timeline');
+  tEl.innerHTML = renderTimeline(events, chars);
+  tEl.querySelectorAll('[data-char-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const char = (_graphData?.characters||[]).find(c => c.id === el.dataset.charId);
+      if (char) showCharInfo(char, _graphData);
+    });
+  });
+
+  // Profiles tab
+  _buildProfilesGrid(chars, curBook);
+  document.getElementById('profiles-grid').classList.remove('hidden');
+  document.getElementById('profiles-detail').classList.add('hidden');
+
+  // Default to map tab
+  showAnalysisTab('map', document.querySelector('.analysis-tab[data-tab="map"]'));
+}
+
+function renderTimeline(events, characters) {
+  const EMOJI = {
+    battle:'⚔️', death:'💀', romance:'❤️', betrayal:'🗡️',
+    discovery:'🔍', meeting:'🤝', journey:'🚶', ceremony:'🎭',
+    political:'👑', transformation:'🦋', conflict:'💥', other:'📖',
+  };
+  const COLOR = {
+    battle:'#ef4444', death:'#64748b', romance:'#ec4899', betrayal:'#f97316',
+    discovery:'#06b6d4', meeting:'#10b981', journey:'#8b5cf6', ceremony:'#a78bfa',
+    political:'#eab308', transformation:'#6366f1', conflict:'#f43f5e', other:'#94a3b8',
+  };
+
+  if (!events.length) return `<p class="text-xs text-slate-600">${_t('no_events')}</p>`;
+
+  const charMap = Object.fromEntries((characters||[]).map(c => [c.id, c]));
+
+  // Split events into main story and epilogue
+  const firstEpilogueIdx = events.findIndex(ev => ev.is_epilogue);
+  const mainEvents     = firstEpilogueIdx === -1 ? events : events.slice(0, firstEpilogueIdx);
+  const epilogueEvents = firstEpilogueIdx === -1 ? []     : events.slice(firstEpilogueIdx);
+
+  function renderEvent(ev) {
+    const type   = ev.type || 'other';
+    const emoji  = EMOJI[type]  || '📖';
+    const color  = COLOR[type]  || '#94a3b8';
+    const badges = (ev.characters||[])
+      .map(id => charMap[id]).filter(Boolean)
+      .map(c => `<button class="text-xs px-1.5 py-0.5 rounded-full transition-opacity hover:opacity-75"
+                         style="background:${color}18;color:${color};border:1px solid ${color}30"
+                         data-char-id="${esc(c.id)}">${esc(c.name)}</button>`)
+      .join('');
+
+    const isClimax     = ev.is_climax;
+    const isResolution = ev.is_resolution;
+    const highlight    = isClimax
+      ? 'ring-1 ring-amber-500/60 bg-amber-950/30'
+      : isResolution
+        ? 'ring-1 ring-violet-500/50 bg-violet-950/20'
+        : 'bg-slate-800/50 hover:bg-slate-800/80';
+
+    const tag = isClimax
+      ? `<span class="text-xs font-bold tracking-widest text-amber-400 uppercase ml-2">Climax</span>`
+      : isResolution
+        ? `<span class="text-xs font-bold tracking-widest text-violet-400 uppercase ml-2">Resolution</span>`
+        : '';
+
+    return `
+      <div class="timeline-event">
+        <div class="timeline-dot" style="border-color:${color};box-shadow:0 0 7px ${color}55${isClimax?',0 0 14px #f59e0b88':''}"></div>
+        <div class="rounded-lg p-3 transition-colors ${highlight}">
+          <div class="flex items-start gap-2">
+            <span class="text-base leading-none mt-0.5 shrink-0">${emoji}</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center flex-wrap gap-1">
+                <p class="text-sm font-semibold text-slate-100 leading-tight">${esc(ev.title||'')}</p>${tag}
+              </div>
+              <p class="text-xs text-slate-400 mt-1 leading-relaxed">${esc(ev.description||'')}</p>
+            </div>
+          </div>
+          ${badges ? `<div class="flex flex-wrap gap-1 mt-2">${badges}</div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  const mainHtml = mainEvents.map(renderEvent).join('');
+
+  const finMarker = `
+    <div class="flex items-center gap-3 my-4">
+      <div class="flex-1 h-px bg-slate-700"></div>
+      <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-600">
+        <span class="text-base">🏁</span>
+        <span class="text-xs font-bold tracking-[0.2em] text-slate-300 uppercase">Fin</span>
+      </div>
+      <div class="flex-1 h-px bg-slate-700"></div>
+    </div>`;
+
+  const epilogueHtml = epilogueEvents.length
+    ? `<div class="mt-1">
+        <p class="text-xs font-semibold tracking-widest text-slate-500 uppercase mb-3 pl-0.5">Epilogue</p>
+        ${epilogueEvents.map(renderEvent).join('')}
+      </div>`
+    : '';
+
+  return `<div class="timeline-track">${mainHtml}</div>${finMarker}${epilogueHtml}`;
+}
+
+function roleColor(role) {
+  return {protagonist:'bg-violet-400',antagonist:'bg-red-400',supporting:'bg-cyan-400',minor:'bg-slate-600'}[role]||'bg-slate-600';
+}
+
+// ── Relationship deep-dive ─────────────────────────────────────────────────────
+
+const ROLE_COLOR = {
+  protagonist: '#a78bfa', antagonist: '#f87171',
+  supporting:  '#67e8f9', minor:       '#64748b',
+};
+
+function showRelPanel(charA, charB, rel, graphData) {
+  document.getElementById('char-info-panel').classList.add('hidden');
+
+  const ca = ROLE_COLOR[charA.role] || '#94a3b8';
+  const cb = ROLE_COLOR[charB.role] || '#94a3b8';
+  const lc = LINK_COLOR[rel.type]   || '#475569';
+
+  document.getElementById('rel-a-name').textContent  = charA.name;
+  document.getElementById('rel-a-name').style.color  = ca;
+  document.getElementById('rel-a-role').innerHTML    =
+    `<span class="badge text-xs" style="background:${ca}20;color:${ca}">${charA.role||'character'}</span>`;
+
+  document.getElementById('rel-b-name').textContent  = charB.name;
+  document.getElementById('rel-b-name').style.color  = cb;
+  document.getElementById('rel-b-role').innerHTML    =
+    `<span class="badge text-xs" style="background:${cb}20;color:${cb}">${charB.role||'character'}</span>`;
+
+  const badge = document.getElementById('rel-type-badge');
+  badge.textContent      = rel.label || rel.type || 'related';
+  badge.style.background = lc + '22';
+  badge.style.color      = lc;
+
+  document.getElementById('rel-content').innerHTML =
+    `<div class="flex flex-col items-center justify-center gap-3 py-8">
+       <div class="spinner"></div>
+       <span class="text-xs text-slate-500 italic">${_t('analyzing_rel')}</span>
+     </div>`;
+
+  document.getElementById('rel-panel').classList.remove('hidden');
+
+  const bookId = document.getElementById('tasks-book-select').value;
+  if (bookId) execRelDeepDive(bookId, charA.name, charB.name, rel);
+}
+
+function closeRelPanel() {
+  document.getElementById('rel-panel').classList.add('hidden');
+}
+
+async function execRelDeepDive(bookId, nameA, nameB, rel) {
+  const content = document.getElementById('rel-content');
+  let accumulated = '', firstChunk = true, gotContent = false, renderPending = false;
+
+  const url = `/api/tasks/relationship/${bookId}?char_a=${encodeURIComponent(nameA)}&char_b=${encodeURIComponent(nameB)}`;
+  let resp;
+  try { resp = await fetch(url); } catch(e) {
+    content.innerHTML = `<p class="text-xs text-red-400 p-2">Network error.</p>`; return;
+  }
+  if (!resp.ok) {
+    content.innerHTML = `<p class="text-xs text-red-400 p-2">Server error (${resp.status}). Check the console.</p>`; return;
+  }
+
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      let d;
+      try { d = JSON.parse(line.slice(6)); } catch(e) { continue; }
+      gotContent = true;
+      if (d.error) {
+        content.innerHTML = `<p class="text-xs text-red-400 p-2">${esc(d.error)}</p>`; return;
+      }
+      if (d.type === 'text') {
+        if (firstChunk) { firstChunk = false; content.innerHTML = ''; }
+        accumulated += d.text;
+        if (!renderPending) {
+          renderPending = true;
+          requestAnimationFrame(() => {
+            const wc = accumulated.trim().split(/\s+/).filter(Boolean).length;
+            const wcLabel = _lang === 'es' ? `generando… ${wc} palabras` : `generating… ${wc} words`;
+            content.innerHTML =
+              `<div class="prose-dark" style="font-size:0.75rem">${marked.parse(accumulated)}</div>` +
+              `<p class="text-xs text-slate-600 italic mt-2 px-1 pb-1">${wcLabel}</p>`;
+            renderPending = false;
+          });
+        }
+      }
+      if (d.done && accumulated) {
+        content.innerHTML = renderRelCard(accumulated, rel);
+      }
+    }
+  }
+
+  if (!gotContent) {
+    content.innerHTML = `<p class="text-xs text-red-400 p-2">No response received — the server may have crashed. Check app logs.</p>`;
+  }
+}
+
+function renderRelCard(markdown, rel) {
+  const lc = LINK_COLOR[rel.type] || '#475569';
+  const SEC = {
+    'how they met':    { sym: '🤝', color: '#10b981' },
+    'dynamic':         { sym: '⚖️', color: '#fbbf24' },
+    'key scenes':      { sym: '🎬', color: '#a78bfa' },
+    'how it evolved':  { sym: '📈', color: '#fb923c' },
+    'tension':         { sym: '⚡', color: lc },
+  };
+  function matchSec(title) {
+    const low = title.toLowerCase();
+    for (const [k, v] of Object.entries(SEC)) {
+      if (low.includes(k.split(' ')[0]) && (k.split(' ').length === 1 || low.includes(k)))
+        return v;
+      if (low.includes(k)) return v;
+    }
+    return { sym: '◆', color: '#94a3b8' };
+  }
+
+  const sections = [];
+  for (const part of markdown.split(/\n(?=## )/)) {
+    const m = part.match(/^## ([^\n]+)\n([\s\S]*)$/);
+    if (m) sections.push({ title: m[1].trim(), body: m[2].trim() });
+  }
+
+  return sections.map(({ title, body }) => {
+    const cfg = matchSec(title);
+    const cleanTitle = title.replace(/\s*\(.*?\)\s*/g, '').trim();
+    return `
+      <div style="margin-bottom:0.875rem;padding-bottom:0.875rem;border-bottom:1px solid #1e293b;">
+        <div style="display:flex;align-items:center;gap:0.375rem;margin-bottom:0.4rem;">
+          <span style="font-size:0.8rem;line-height:1;">${cfg.sym}</span>
+          <span style="color:${cfg.color};font-size:0.55rem;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">${esc(cleanTitle.toUpperCase())}</span>
+          <span style="flex:1;height:1px;background:${cfg.color}30;"></span>
+        </div>
+        <div class="profile-body" style="font-size:0.75rem;">${marked.parse(body)}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderProfileCard(markdown, character) {
+  const SEC = {
+    'identity':       { sym: '◆', color: '#a78bfa' },
+    'personality':    { sym: '◉', color: '#fbbf24' },
+    'background':     { sym: '◎', color: '#60a5fa' },
+    'relationships':  { sym: '⬡', color: '#34d399' },
+    'character arc':  { sym: '↝', color: '#fb923c' },
+    'key moments':    { sym: '★', color: '#e879f9' },
+    'notable quotes': { sym: '❝', color: '#94a3b8' },
+  };
+
+  function matchSec(title) {
+    const low = title.toLowerCase();
+    for (const [k, v] of Object.entries(SEC)) {
+      if (low.includes(k)) return v;
+    }
+    return { sym: '◆', color: '#94a3b8' };
+  }
+
+  const sections = [];
+  const parts = markdown.split(/\n(?=## )/);
+  for (const part of parts) {
+    const m = part.match(/^## ([^\n]+)\n([\s\S]*)$/);
+    if (m) sections.push({ title: m[1].trim(), body: m[2].trim() });
+  }
+
+  const sectionsHTML = sections.map(({ title, body }) => {
+    const cfg = matchSec(title);
+    const cleanTitle = title.replace(/\s*\(.*?\)\s*/g, '').trim();
+    return `
+      <div class="profile-section">
+        <div class="profile-sec-hdr">
+          <span class="profile-sec-sym" style="color:${cfg.color}">${cfg.sym}</span>
+          <span class="profile-sec-lbl" style="color:${cfg.color}">${esc(cleanTitle.toUpperCase())}</span>
+          <span class="profile-sec-rule" style="background:${cfg.color}30"></span>
+        </div>
+        <div class="profile-body">${marked.parse(body)}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="profile-card">
+      <div class="profile-header">
+        <div class="profile-eyebrow">${_t('profile_eyebrow')}</div>
+        <div class="profile-name">${esc(character)}</div>
+      </div>
+      ${sectionsHTML}
+    </div>`;
+}
+
+function saveProfileAsPDF() {
+  const card      = document.querySelector('#char-chart-content .profile-card');
+  const character = document.getElementById('char-chart-title')?.textContent?.trim() || 'profile';
+  if (!card) return;
+
+  const css = `
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      background:#0f172a;color:#cbd5e1;
+      font-family:system-ui,-apple-system,sans-serif;
+      padding:2rem;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    }
+    @media print{body{padding:0.5rem}}
+    .profile-card{
+      border:1px solid #2d1657;border-top:3px solid #7c3aed;
+      border-radius:0.75rem;background:#0f172a;overflow:hidden;
+      max-width:680px;margin:0 auto;
+    }
+    .profile-header{
+      padding:1.375rem 1.25rem 1.125rem;text-align:center;
+      background:linear-gradient(165deg,#160826 0%,#0f172a 65%);
+      border-bottom:1px solid #1e293b;
+    }
+    .profile-eyebrow{color:#4c1d95;font-size:0.575rem;letter-spacing:0.38em;margin-bottom:0.5rem;font-weight:600}
+    .profile-name{color:#f1f5f9;font-size:1.375rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;line-height:1.2}
+    .profile-section{padding:0.875rem 1.25rem;border-bottom:1px solid #1e293b}
+    .profile-section:last-child{border-bottom:none}
+    .profile-sec-hdr{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem}
+    .profile-sec-sym{font-size:0.85rem;line-height:1;flex-shrink:0}
+    .profile-sec-lbl{font-size:0.575rem;font-weight:700;letter-spacing:0.2em}
+    .profile-sec-rule{flex:1;height:1px}
+    .profile-body{color:#cbd5e1;font-size:0.8rem;line-height:1.7}
+    .profile-body p{margin:0 0 0.45rem 0}
+    .profile-body ul{list-style:disc;padding-left:1.25rem;margin:0 0 0.45rem 0}
+    .profile-body ol{list-style:decimal;padding-left:1.25rem;margin:0 0 0.45rem 0}
+    .profile-body li{margin-bottom:0.275rem}
+    .profile-body p:last-child,.profile-body ul:last-child,.profile-body ol:last-child{margin-bottom:0}
+    .profile-body strong{color:#e2e8f0;font-weight:600}
+    .profile-body em{color:#a78bfa;font-style:italic}
+    .profile-body blockquote{
+      border-left:2px solid #4c1d95;padding:0.5rem 0.875rem;margin:0.5rem 0;
+      background:rgba(30,41,59,0.6);border-radius:0 6px 6px 0;
+      font-style:italic;color:#94a3b8;
+    }
+  `;
+
+  const win = window.open('', '_blank', 'width=800,height=900');
+  win.document.write(`<!DOCTYPE html>
+<html><head>
+  <meta charset="UTF-8"/>
+  <title>${esc(character)} — Character Profile</title>
+  <style>${css}</style>
+</head><body>
+  ${card.outerHTML}
+  <script>
+    window.onload = function() {
+      window.print();
+      window.onafterprint = function() { window.close(); };
+    };
+  <\/script>
+</body></html>`);
+  win.document.close();
+}
+
+function _pdfOpen(title, bodyHtml, extraCss) {
+  const base = `
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0f172a;color:#cbd5e1;font-family:system-ui,-apple-system,sans-serif;
+         padding:2rem;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    @media print{body{padding:0.5rem}}
+    h1{font-size:1.1rem;font-weight:700;color:#e2e8f0;margin-bottom:1.5rem;
+       padding-bottom:0.5rem;border-bottom:1px solid #2d1657}
+    .profile-body{color:#cbd5e1;font-size:0.8rem;line-height:1.7}
+    .profile-body p{margin:0 0 0.45rem 0}
+    .profile-body ul{list-style:disc;padding-left:1.25rem;margin:0 0 0.45rem 0}
+    .profile-body ol{list-style:decimal;padding-left:1.25rem;margin:0 0 0.45rem 0}
+    .profile-body li{margin-bottom:0.275rem}
+    .profile-body strong{color:#e2e8f0;font-weight:600}
+    .profile-body em{color:#a78bfa;font-style:italic}
+    .profile-body blockquote{border-left:2px solid #4c1d95;padding:0.5rem 0.875rem;margin:0.5rem 0;
+      background:rgba(30,41,59,0.6);border-radius:0 6px 6px 0;font-style:italic;color:#94a3b8}
+  `;
+  const win = window.open('', '_blank', 'width=820,height=960');
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8"/>
+    <title>${esc(title)}</title>
+    <style>${base}${extraCss||''}</style>
+  </head><body>
+    <h1>${esc(title)}</h1>
+    ${bodyHtml}
+    <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+function saveTimelinePDF() {
+  const content = document.getElementById('tab-content-timeline');
+  if (!content || !content.innerHTML.trim()) return;
+  const bookId  = document.getElementById('tasks-book-select').value;
+  const book    = (_books||[]).find(b => b.id === bookId);
+  const title   = (book?.title || 'Book') + ' — Timeline';
+
+  const css = `
+    .timeline-track{position:relative;padding-left:2rem}
+    .timeline-track::before{content:'';position:absolute;left:0.5625rem;top:0.875rem;bottom:0.875rem;
+      width:2px;background:linear-gradient(to bottom,#4c1d95,rgba(30,41,59,0));border-radius:1px}
+    .timeline-event{position:relative;margin-bottom:0.875rem}
+    .timeline-event:last-child{margin-bottom:0}
+    .timeline-dot{position:absolute;left:-1.5rem;top:0.875rem;width:0.6875rem;height:0.6875rem;
+      border-radius:50%;border:2px solid;background:#0f172a;z-index:1}
+    .rounded-lg{border-radius:0.5rem}
+    .bg-slate-800\\/50,.bg-slate-800\\/80{background:rgba(30,41,59,0.5)}
+    .bg-amber-950\\/30{background:rgba(69,26,3,0.3)}
+    .bg-violet-950\\/20{background:rgba(46,16,101,0.2)}
+    .ring-1{box-shadow:inset 0 0 0 1px}
+    .ring-amber-500\\/60{box-shadow:inset 0 0 0 1px rgba(245,158,11,0.6)}
+    .ring-violet-500\\/50{box-shadow:inset 0 0 0 1px rgba(139,92,246,0.5)}
+    p.text-sm{font-size:0.875rem;font-weight:600;color:#f1f5f9;line-height:1.3}
+    p.text-xs{font-size:0.75rem;color:#94a3b8;margin-top:0.25rem;line-height:1.5}
+    .text-amber-400{color:#fbbf24}
+    .text-violet-400{color:#a78bfa}
+    .text-xs.font-bold{font-size:0.65rem;font-weight:700;letter-spacing:0.1em}
+    .flex{display:flex}.items-center{align-items:center}.gap-2{gap:0.5rem}
+    .flex-wrap{flex-wrap:wrap}.gap-1{gap:0.25rem}.mt-2{margin-top:0.5rem}
+    .flex-1{flex:1}.h-px{height:1px}.bg-slate-700{background:#334155}
+    .my-4{margin:1rem 0}.px-3{padding-left:0.75rem;padding-right:0.75rem}
+    .py-1{padding-top:0.25rem;padding-bottom:0.25rem}
+    .rounded-full{border-radius:9999px}
+    .bg-slate-800{background:#1e293b}.border{border-width:1px}.border-slate-600{border-color:#475569}
+    .text-slate-300{color:#cbd5e1}.uppercase{text-transform:uppercase}
+    .tracking-\\[0\\.2em\\]{letter-spacing:0.2em}
+    .mt-1{margin-top:0.25rem}
+    p.text-xs.font-semibold{font-size:0.7rem;font-weight:600;color:#64748b;
+      text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75rem}
+    button{display:none}
+  `;
+  _pdfOpen(title, content.innerHTML, css);
+}
+
+function saveChapterSummaryPDF() {
+  const content = document.getElementById('chapter-summary-content');
+  const titleEl = document.getElementById('chapter-detail-title');
+  if (!content || !content.innerHTML.trim()) return;
+  const bookId  = document.getElementById('tasks-book-select').value;
+  const book    = (_books||[]).find(b => b.id === bookId);
+  const chTitle = titleEl?.textContent?.trim() || 'Chapter';
+  const title   = (book?.title ? book.title + ' — ' : '') + chTitle;
+
+  const css = `
+    div[style]{max-width:680px}
+    .profile-body p:last-child,.profile-body ul:last-child,.profile-body ol:last-child{margin-bottom:0}
+  `;
+  _pdfOpen(title, content.innerHTML, css);
+}
+
+async function execCharChart(regen = false) {
+  const bookId    = document.getElementById('tasks-book-select').value;
+  const character = document.getElementById('char-name-input').value.trim();
+  if (!bookId || !character) return;
+
+  document.getElementById('char-chart-cached-badge').classList.add('hidden');
+  showTaskStatus(`Building profile for ${character}…`, 5);
+
+  const content = document.getElementById('char-chart-content');
+  const sources = document.getElementById('char-chart-sources');
+  const srcList = document.getElementById('char-chart-sources-list');
+
+  document.getElementById('char-chart-title').textContent = character;
+  content.innerHTML = '';
+  sources.classList.add('hidden');
+  document.getElementById('profiles-detail').classList.remove('hidden');
+  document.getElementById('profiles-grid').classList.add('hidden');
+
+  const stagePct = { searching: 20, analyzing: 50, waiting: 65 };
+  let firstChunk = true;
+
+  const url  = `/api/tasks/character-chart/${bookId}?character=${encodeURIComponent(character)}` + (regen ? '&regen=true' : '');
+  const resp = await fetch(url);
+  const reader = resp.body.getReader();
+  const dec    = new TextDecoder();
+  let buf = '', accumulated = '', renderPending = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const d = JSON.parse(line.slice(6));
+      if (d.error) { showTaskStatus('Error: ' + d.error); return; }
+      if (d.stage) {
+        const pct = stagePct[d.stage] || 30;
+        showTaskStatus(d.msg || d.stage, pct);
+        if (d.stage === 'analyzing') _creepProgress(85, 60000);
+      }
+      if (d.type === 'text') {
+        if (firstChunk) {
+          firstChunk = false;
+          _stopFunMessages();
+          _setProgress(90);
+          hideTaskStatus();
+          if (d.cached) document.getElementById('char-chart-cached-badge').classList.remove('hidden');
+        }
+        accumulated += d.text;
+        if (!renderPending) {
+          renderPending = true;
+          requestAnimationFrame(() => {
+            content.innerHTML = `<div class="prose-dark text-sm">${marked.parse(accumulated)}</div>`;
+            renderPending = false;
+          });
+        }
+      }
+      if (d.done) {
+        if (accumulated) content.innerHTML = renderProfileCard(accumulated, character);
+        if (d.sources?.length) {
+          sources.classList.remove('hidden');
+          srcList.innerHTML = d.sources
+            .map(s => `<p class="text-xs text-slate-500">• ${esc(s.book)} — ${esc(s.chapter)}</p>`)
+            .join('');
+        }
+      }
+    }
+  }
+}
+
+// ── Chapter summaries ─────────────────────────────────────────────────────────
+
+let _chaptersBookId = null;
+let _currentChapterNum = null;
+
+async function loadChapters(bookId, force = false) {
+  if (!force && _chaptersBookId === bookId) return;
+  _chaptersBookId = bookId;
+
+  const list   = document.getElementById('chapters-list');
+  const detail = document.getElementById('chapters-detail');
+  if (!list) return;
+  detail.classList.add('hidden');
+  list.classList.remove('hidden');
+  list.innerHTML = `<p class="text-xs text-slate-500 text-center py-8 animate-pulse">Loading…</p>`;
+
+  let chapters;
+  try {
+    chapters = await fetch(`/api/books/${bookId}/chapters`).then(r => r.json());
+  } catch(e) {
+    list.innerHTML = `<p class="text-xs text-red-400 text-center py-8">Failed to load chapters.</p>`;
+    return;
+  }
+
+  if (!chapters.length) {
+    list.innerHTML = `<p class="text-xs text-slate-600 text-center py-8">${_t('chapters_empty')}</p>`;
+    return;
+  }
+
+  list.innerHTML =
+    `<div class="space-y-1">` +
+    chapters.map(ch => `
+      <button data-ch-num="${ch.num}" data-ch-title="${esc(ch.title)}" data-ch-cached="${ch.cached}"
+              onclick="showChapter(parseInt(this.dataset.chNum), this.dataset.chTitle, this.dataset.chCached==='true')"
+              class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                     bg-slate-800/40 hover:bg-slate-800 border border-slate-700/40
+                     hover:border-violet-600/40 transition-all text-left">
+        <span class="text-xs font-mono text-violet-600/80 w-8 shrink-0 text-right">
+          ${String(ch.num + 1).padStart(2, '0')}.
+        </span>
+        <span class="flex-1 text-sm text-slate-300 truncate">${esc(ch.title)}</span>
+        <span class="text-xs text-slate-600 shrink-0">${ch.sections} ${_t('ch_sections')}</span>
+        <span class="w-1.5 h-1.5 rounded-full shrink-0 ${ch.cached ? 'bg-violet-500' : 'bg-slate-700'}"></span>
+      </button>`).join('') +
+    `</div>`;
+}
+
+function showChaptersList() {
+  document.getElementById('chapters-list').classList.remove('hidden');
+  document.getElementById('chapters-detail').classList.add('hidden');
+}
+
+function showChapter(num, title, isCached) {
+  const bookId = document.getElementById('tasks-book-select').value;
+  if (!bookId) return;
+  _currentChapterNum = num;
+
+  document.getElementById('chapter-detail-title').textContent = `Ch. ${num + 1}: ${title}`;
+  document.getElementById('chapter-cached-badge').classList.add('hidden');
+  document.getElementById('chapters-list').classList.add('hidden');
+  document.getElementById('chapters-detail').classList.remove('hidden');
+
+  const content = document.getElementById('chapter-summary-content');
+  if (isCached) {
+    execChapterSummary(bookId, num, false);
+  } else {
+    content.innerHTML = `
+      <div class="flex flex-col items-center gap-4 py-10 text-center">
+        <div class="text-4xl">📖</div>
+        <p class="text-slate-400 text-sm">
+          ${_lang === 'es' ? 'Sin resumen aún para este capítulo' : 'No summary yet for this chapter'}
+        </p>
+        <button onclick="execChapterSummary(document.getElementById('tasks-book-select').value, ${num}, false)"
+                class="btn-primary px-5 py-2">
+          ✦ ${_t('ch_generate')}
+        </button>
+      </div>`;
+  }
+}
+
+function regenChapterSummary() {
+  const bookId = document.getElementById('tasks-book-select').value;
+  if (!bookId || _currentChapterNum === null) return;
+  execChapterSummary(bookId, _currentChapterNum, true);
+}
+
+async function execChapterSummary(bookId, num, regen) {
+  const content = document.getElementById('chapter-summary-content');
+  document.getElementById('chapter-cached-badge').classList.add('hidden');
+
+  content.innerHTML = `
+    <div class="flex items-center gap-2 py-4">
+      <span class="stage-dot"></span>
+      <span class="text-xs text-slate-500">Loading…</span>
+    </div>`;
+
+  let firstChunk = true, accumulated = '', renderPending = false;
+  const url = `/api/tasks/chapter-summary/${bookId}?chapter_num=${num}` + (regen ? '&regen=true' : '');
+
+  let resp;
+  try { resp = await fetch(url); } catch(e) {
+    content.innerHTML = `<p class="text-xs text-red-400 p-2">Network error.</p>`; return;
+  }
+
+  const reader = resp.body.getReader();
+  const dec    = new TextDecoder();
+  let buf      = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      let d;
+      try { d = JSON.parse(line.slice(6)); } catch(e) { continue; }
+      if (d.error) { content.innerHTML = `<p class="text-xs text-red-400 p-2">${esc(d.error)}</p>`; return; }
+      if (d.stage) {
+        const _cpct = { reading: 20, analyzing: 50, waiting: 68 };
+        showTaskStatus(d.msg || d.stage, _cpct[d.stage] || 40);
+        if (d.stage === 'analyzing') _creepProgress(65, 30000);
+        if (d.stage === 'waiting')   _creepProgress(90, 60000);
+      }
+      if (d.type === 'text') {
+        if (firstChunk) {
+          firstChunk = false;
+          hideTaskStatus();
+          if (d.cached) document.getElementById('chapter-cached-badge').classList.remove('hidden');
+        }
+        accumulated += d.text;
+        if (!renderPending) {
+          renderPending = true;
+          requestAnimationFrame(() => {
+            content.innerHTML = `<div class="prose-dark">${marked.parse(accumulated)}</div>`;
+            renderPending = false;
+          });
+        }
+      }
+      if (d.done && accumulated) {
+        content.innerHTML = renderChapterSummary(accumulated);
+        if (regen) loadChapters(bookId, true);
+      }
+    }
+  }
+}
+
+function renderChapterSummary(markdown) {
+  const SEC = {
+    'overview':   { sym: '📖', color: '#a78bfa' },
+    'key events': { sym: '⚡', color: '#fbbf24' },
+    'character':  { sym: '👤', color: '#67e8f9' },
+    'themes':     { sym: '🎭', color: '#fb923c' },
+  };
+  function matchSec(title) {
+    const low = title.toLowerCase();
+    for (const [k, v] of Object.entries(SEC)) if (low.includes(k)) return v;
+    return { sym: '◆', color: '#94a3b8' };
+  }
+  const sections = [];
+  for (const part of markdown.split(/\n(?=## )/)) {
+    const m = part.match(/^## ([^\n]+)\n([\s\S]*)$/);
+    if (m) sections.push({ title: m[1].trim(), body: m[2].trim() });
+  }
+  if (!sections.length) return `<div class="prose-dark">${marked.parse(markdown)}</div>`;
+  return sections.map(({ title, body }) => {
+    const cfg = matchSec(title);
+    return `
+      <div style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid #1e293b;">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+          <span style="font-size:0.85rem">${cfg.sym}</span>
+          <span style="color:${cfg.color};font-size:0.575rem;font-weight:700;letter-spacing:0.2em;text-transform:uppercase">${esc(title.toUpperCase())}</span>
+          <span style="flex:1;height:1px;background:${cfg.color}30"></span>
+        </div>
+        <div class="profile-body">${marked.parse(body)}</div>
+      </div>`;
+  }).join('');
+}
+
+function showAnalysisTab(tab, btn) {
+  ['map','timeline','characters','chapters','profiles'].forEach(t => {
+    document.getElementById(`tab-panel-${t}`).classList.toggle('hidden', t !== tab);
+  });
+  document.querySelectorAll('.analysis-tab').forEach(b => {
+    const active = b === btn;
+    b.classList.toggle('border-violet-500',  active);
+    b.classList.toggle('text-violet-300',    active);
+    b.classList.toggle('hover:text-violet-200', active);
+    b.classList.toggle('border-transparent', !active);
+    b.classList.toggle('text-slate-500',     !active);
+    b.classList.toggle('hover:text-slate-300', !active);
+  });
+  if (tab === 'chapters') {
+    const bookId = document.getElementById('tasks-book-select').value;
+    if (bookId) loadChapters(bookId);
+  }
+}
+
+function showProfilesGrid() {
+  document.getElementById('profiles-grid').classList.remove('hidden');
+  document.getElementById('profiles-detail').classList.add('hidden');
+}
+
+function _buildProfilesGrid(chars, curBook) {
+  const grid = document.getElementById('profiles-grid');
+  if (!grid) return;
+  const cachedProfiles = new Set((curBook?.profiles || []).map(p => p.name));
+  if (!chars.length) {
+    grid.innerHTML = `<p class="text-xs text-slate-600 col-span-full text-center py-8">${_t('no_chars')}</p>`;
+    return;
+  }
+  const ROLE_BG  = { protagonist:'#5b21b6', antagonist:'#991b1b', supporting:'#0e7490', minor:'#1e293b' };
+  const ROLE_STK = { protagonist:'#a78bfa', antagonist:'#fca5a5', supporting:'#67e8f9', minor:'#475569' };
+  grid.innerHTML = chars.map(c => {
+    const hasPro = cachedProfiles.has(c.name);
+    const bg  = ROLE_BG[c.role]  || ROLE_BG.minor;
+    const stk = ROLE_STK[c.role] || ROLE_STK.minor;
+    return `
+      <button onclick="openCharProfile('${esc(c.name)}')"
+              class="relative flex flex-col items-center gap-2.5 p-4 rounded-xl
+                     bg-slate-800/50 hover:bg-slate-800 border border-slate-700/60
+                     hover:border-violet-600/50 transition-all text-center">
+        ${hasPro ? '<span class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-violet-500"></span>' : ''}
+        <div class="w-11 h-11 rounded-full flex items-center justify-center"
+             style="background:${bg};border:2px solid ${stk}">
+          <svg class="w-5 h-5" fill="none" stroke="${stk}" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+        </div>
+        <p class="text-xs font-medium text-slate-200 leading-tight truncate w-full">${esc(c.name)}</p>
+        <span class="text-xs text-slate-600 capitalize">${c.role || 'character'}</span>
+      </button>`;
+  }).join('');
+}
+
+// ── Task status + fun messages ─────────────────────────────────────────────────
+const _FUN_MSGS_ES = [
+  "Sobornando a personajes menores por su historia…",
+  "Confiando en la Fuerza para esto…",
+  "Destilando mil páginas en sabiduría…",
+  "Invocando los espíritus del relato…",
+  "Comprobando quién apuñaló a quién en el capítulo 7…",
+  "Preguntando al protagonista sobre sus sentimientos…",
+  "Desenredando todos esos hilos argumentales…",
+  "Cotejando cada traición registrada…",
+  "Consultando los pergaminos ancestrales…",
+  "El oráculo está en reunión — por favor espere…",
+  "Entrenando cuervos para entregar biografías…",
+  "Trazando la red de mentiras y alianzas…",
+  "Verificando que no fue el mayordomo…",
+  "Leyendo entre líneas, literalmente…",
+  "Calculando la duración del monólogo del villano…",
+  "Buscando al elegido… se encontraron varios…",
+  "Espiando el capítulo 12…",
+  "Pidiendo cortésmente sus secretos a los personajes…",
+  "Siguiendo el dinero (y la espada mágica)…",
+  "Negociando con narradores poco fiables…",
+];
+const _FUN_MSGS = [
+  "Bribing minor characters for backstory…",
+  "Trusting the Force on this one…",
+  "Distilling a thousand pages into wisdom…",
+  "Summoning the spirits of the narrative…",
+  "Checking who stabbed who in Chapter 7…",
+  "Asking the protagonist about their feelings…",
+  "Untangling all those plot threads…",
+  "Cross-referencing every single betrayal…",
+  "Consulting the ancient scrolls…",
+  "The oracle is in a meeting — please hold…",
+  "Training ravens to deliver character bios…",
+  "Mapping the web of lies and alliances…",
+  "Verifying the butler didn't do it…",
+  "Reading between the lines, quite literally…",
+  "Calculating villain monologue duration…",
+  "Searching for the chosen one… found several…",
+  "Eavesdropping on Chapter 12…",
+  "Politely asking characters for their secrets…",
+  "Following the money (and the magic sword)…",
+  "Negotiating with unreliable narrators…",
+];
+// Pre-generate 24 sine-wave frames across 8 bar columns
+const _WAVE_FRAMES = (() => {
+  const B = '▁▂▃▄▅▆▇█';
+  return Array.from({length: 24}, (_, f) => {
+    const phase = (f / 24) * Math.PI * 2;
+    return Array.from({length: 8}, (_, i) => {
+      const v = Math.sin(phase + i * Math.PI / 2.5);
+      return B[Math.max(0, Math.min(7, Math.round(((v + 1) / 2) * 7)))];
+    }).join('');
+  });
+})();
+
+let _funIdx = 0, _funTimer = null, _creepTimer = null, _waveTimer = null, _waveFrame = 0;
+let _elapsedTimer = null, _elapsedSecs = 0;
+
+function _startElapsed() {
+  _elapsedSecs = 0;
+  clearInterval(_elapsedTimer);
+  const el = document.getElementById('task-elapsed');
+  if (el) { el.textContent = '0s'; el.classList.remove('hidden'); }
+  _elapsedTimer = setInterval(() => {
+    _elapsedSecs++;
+    const s = _elapsedSecs % 60, m = Math.floor(_elapsedSecs / 60);
+    if (el) el.textContent = m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }, 1000);
+}
+
+function _stopElapsed() {
+  clearInterval(_elapsedTimer); _elapsedTimer = null;
+  const el = document.getElementById('task-elapsed');
+  if (el) el.classList.add('hidden');
+}
+
+function _funMsgs() { return _lang === 'es' ? _FUN_MSGS_ES : _FUN_MSGS; }
+
+function _rotateFunMsg() {
+  const el = document.getElementById('task-fun-msg');
+  if (!el) return;
+  el.style.opacity = '0';
+  setTimeout(() => {
+    const msgs = _funMsgs();
+    _funIdx = (_funIdx + 1) % msgs.length;
+    el.textContent = msgs[_funIdx];
+    el.style.opacity = '1';
+  }, 350);
+}
+
+function _startFunMessages() {
+  clearInterval(_funTimer);
+  const msgs = _funMsgs();
+  _funIdx = Math.floor(Math.random() * msgs.length);
+  const el = document.getElementById('task-fun-msg');
+  if (el) { el.textContent = msgs[_funIdx]; el.style.opacity = '1'; }
+  _funTimer = setInterval(_rotateFunMsg, 3200);
+
+  // Wave animation + provider logo
+  _waveFrame = Math.floor(Math.random() * _WAVE_FRAMES.length);
+  const waveAnim = document.getElementById('task-wave-anim');
+  const waveEl   = document.getElementById('task-wave');
+  const logoEl   = document.getElementById('task-provider-logo');
+  if (logoEl) logoEl.innerHTML = PROVIDER_LOGO[_cfgProvider] || PROVIDER_LOGO.local;
+  if (waveAnim) waveAnim.classList.remove('hidden');
+  clearInterval(_waveTimer);
+  _waveTimer = setInterval(() => {
+    if (waveEl) waveEl.textContent = _WAVE_FRAMES[_waveFrame++ % _WAVE_FRAMES.length];
+  }, 80);
+}
+
+function _stopFunMessages() {
+  clearInterval(_funTimer);  _funTimer  = null;
+  clearInterval(_creepTimer); _creepTimer = null;
+  clearInterval(_waveTimer); _waveTimer = null;
+  const waveAnim = document.getElementById('task-wave-anim');
+  if (waveAnim) waveAnim.classList.add('hidden');
+}
+
+function _setProgress(pct) {
+  const bar = document.getElementById('task-progress-bar');
+  if (bar) bar.style.width = pct + '%';
+}
+
+// Slowly inch the bar toward `target` over `ms` ms (so long LLM calls feel alive)
+function _creepProgress(target, ms) {
+  clearInterval(_creepTimer);
+  const start    = parseFloat(document.getElementById('task-progress-bar')?.style.width || '0');
+  const steps    = 60;
+  const interval = ms / steps;
+  let   step     = 0;
+  _creepTimer = setInterval(() => {
+    step++;
+    // Ease-out: fast at first, slow near target
+    const t = step / steps;
+    const eased = 1 - Math.pow(1 - t, 3);
+    _setProgress(start + (target - start) * eased);
+    if (step >= steps) clearInterval(_creepTimer);
+  }, interval);
+}
+
+function showTaskStatus(msg, pct) {
+  const el = document.getElementById('task-status');
+  document.getElementById('task-status-msg').textContent = msg;
+  el.classList.remove('hidden');
+  if (pct !== undefined) _setProgress(pct);
+  if (!_funTimer) { _startFunMessages(); _startElapsed(); }
+}
+
+function hideTaskStatus() {
+  _stopFunMessages();
+  _stopElapsed();
+  _setProgress(100);
+  setTimeout(() => {
+    document.getElementById('task-status').classList.add('hidden');
+    _setProgress(0);
+  }, 600);
+}
+
+// ── Mermaid zoom / download ───────────────────────────────────────────────────
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+const PROVIDER_DEFAULTS = {
+  anthropic: { answer: 'claude-sonnet-4-6',  expand: 'claude-haiku-4-5-20251001', base: '',                              ctx: 0    },
+  openai:    { answer: 'gpt-4o',             expand: 'gpt-4o-mini',              base: 'https://api.openai.com/v1',     ctx: 0    },
+  gemini:    { answer: 'gemini-2.0-flash',   expand: 'gemini-2.0-flash',         base: '',                              ctx: 0    },
+  local:     { answer: 'local',              expand: 'local',                    base: 'http://localhost:8080/v1',      ctx: 4096 },
+};
+
+async function loadConfig() {
+  const cfg = await fetch('/api/config').then(r => r.json());
+  _cfgProvider = cfg.provider || 'anthropic';
+  document.getElementById('cfg-answer-model').value  = cfg.answer_model  || '';
+  document.getElementById('cfg-expand-model').value  = cfg.expand_model  || '';
+  document.getElementById('cfg-base-url').value      = cfg.base_url      || '';
+  document.getElementById('cfg-context-limit').value = cfg.context_limit ?? '';
+  highlightProvider(_cfgProvider);
+  updateProviderFields(_cfgProvider);
+  const ctxNote = cfg.context_limit ? ` · ${cfg.context_limit}ctx` : '';
+  document.getElementById('provider-badge').textContent =
+    `${cfg.provider} · ${cfg.answer_model}${ctxNote}`;
+}
+
+function selectProvider(p) {
+  _cfgProvider = p;
+  highlightProvider(p);
+  updateProviderFields(p);
+  const d = PROVIDER_DEFAULTS[p] || {};
+  document.getElementById('cfg-answer-model').value  = d.answer || '';
+  document.getElementById('cfg-expand-model').value  = d.expand || '';
+  document.getElementById('cfg-base-url').value      = d.base   || '';
+  document.getElementById('cfg-context-limit').value = d.ctx ?? 0;
+}
+
+function highlightProvider(p) {
+  document.querySelectorAll('.provider-btn').forEach((btn, i) => {
+    const names = ['anthropic','openai','gemini','local'];
+    const active = names[i] === p;
+    btn.classList.toggle('border-violet-500', active);
+    btn.classList.toggle('bg-violet-900/30', active);
+    btn.classList.toggle('text-violet-300', active);
+    btn.classList.toggle('border-slate-700', !active);
+    btn.classList.toggle('text-slate-400', !active);
+  });
+}
+
+function updateProviderFields(p) {
+  const showBase = p === 'openai' || p === 'local';
+  const showKey  = p !== 'local';
+  document.getElementById('field-base-url').classList.toggle('hidden', !showBase);
+  document.getElementById('field-api-key').classList.toggle('hidden', !showKey);
+
+  const labels = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY' };
+  const ph = document.querySelector('#field-api-key input');
+  if (ph) ph.placeholder = `Leave empty to use ${labels[p] || 'env var'}`;
+}
+
+async function saveSettings() {
+  const msg = document.getElementById('settings-msg');
+  msg.textContent = 'Saving…';
+  msg.classList.remove('hidden', 'text-red-400', 'text-emerald-400');
+  msg.classList.add('text-slate-500');
+
+  const payload = {
+    provider:      _cfgProvider,
+    api_key:       document.getElementById('cfg-api-key').value.trim(),
+    base_url:      document.getElementById('cfg-base-url').value.trim(),
+    answer_model:  document.getElementById('cfg-answer-model').value.trim(),
+    expand_model:  document.getElementById('cfg-expand-model').value.trim(),
+    context_limit: parseInt(document.getElementById('cfg-context-limit').value) || 0,
+  };
+
+  const res  = await fetch('/api/config', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+
+  if (data.ok) {
+    msg.textContent = `Saved — ${data.provider} · ${data.answer_model}`;
+    msg.classList.replace('text-slate-500', 'text-emerald-400');
+    document.getElementById('provider-badge').textContent =
+      `${data.provider} · ${data.answer_model}`;
+    document.getElementById('cfg-api-key').value = '';  // clear after save
+    if (data.warning) {
+      msg.textContent += ` ⚠ ${data.warning}`;
+      msg.classList.replace('text-emerald-400', 'text-yellow-400');
+    }
+  } else {
+    msg.textContent = data.error || 'Save failed';
+    msg.classList.replace('text-slate-500', 'text-red-400');
+  }
+}
+
+function downloadPNG() {
+  if (!_network) return;
+  const src = document.querySelector('#graph-cy canvas');
+  if (!src) return;
+  const tmp = document.createElement('canvas');
+  tmp.width = src.width; tmp.height = src.height;
+  const ctx = tmp.getContext('2d');
+  ctx.fillStyle = '#020617';
+  ctx.fillRect(0, 0, tmp.width, tmp.height);
+  ctx.drawImage(src, 0, 0);
+  Object.assign(document.createElement('a'), {
+    download: 'character-map.png', href: tmp.toDataURL('image/png'),
+  }).click();
+}
+
+// ── Passage Search ────────────────────────────────────────────────────────────
+
+let _searchBusy = false;
+
+async function doSearch() {
+  const q   = document.getElementById('search-input').value.trim();
+  if (!q || _searchBusy) return;
+
+  const bookId  = document.getElementById('search-book-filter').value;
+  const status  = document.getElementById('search-status');
+  const results = document.getElementById('search-results');
+
+  _searchBusy = true;
+  status.textContent = _lang === 'es' ? 'Buscando…' : 'Searching…';
+  status.classList.remove('hidden');
+  results.innerHTML = '';
+
+  try {
+    const params = new URLSearchParams({ q, top_k: 10 });
+    if (bookId) params.set('book_id', bookId);
+    const data = await fetch(`/api/search?${params}`).then(r => r.json());
+
+    if (!data.results?.length) {
+      status.textContent = _lang === 'es' ? 'Sin resultados.' : 'No results found.';
+      return;
+    }
+
+    status.textContent = `${data.results.length} ${_lang === 'es' ? 'pasajes encontrados' : 'passages found'}`;
+    results.innerHTML = data.results.map((r, i) => {
+      const score   = Math.round(r.score * 100);
+      const bars    = Math.round(r.score * 5);
+      const scoreEl = Array.from({length: 5}, (_, k) =>
+        `<span class="${k < bars ? 'text-violet-400' : 'text-slate-700'}">▮</span>`
+      ).join('');
+      const chLabel = `Ch. ${r.chapter_num + 1}${r.chapter_title ? ': ' + esc(r.chapter_title) : ''}`;
+      const text    = esc(r.text);
+
+      return `
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="text-xs font-semibold text-violet-300 truncate">${esc(r.book_title)}</p>
+              <p class="text-xs text-slate-500 mt-0.5">${chLabel}</p>
+            </div>
+            <div class="shrink-0 flex items-center gap-1.5 text-xs" title="${score}% relevance">
+              <span class="font-mono">${scoreEl}</span>
+              <span class="text-slate-600">${score}%</span>
+            </div>
+          </div>
+          <p id="search-text-${i}" class="text-sm text-slate-300 leading-relaxed
+             line-clamp-4 whitespace-pre-wrap">${text}</p>
+          <button onclick="togglePassage(${i})"
+                  id="search-toggle-${i}"
+                  class="text-xs text-slate-600 hover:text-violet-400 transition-colors">
+            ${_lang === 'es' ? 'Ver completo ↓' : 'Show full passage ↓'}
+          </button>
+        </div>`;
+    }).join('');
+
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    _searchBusy = false;
+  }
+}
+
+function togglePassage(i) {
+  const el  = document.getElementById(`search-text-${i}`);
+  const btn = document.getElementById(`search-toggle-${i}`);
+  const collapsed = el.classList.toggle('line-clamp-4');
+  btn.textContent = collapsed
+    ? (_lang === 'es' ? 'Ver completo ↓' : 'Show full passage ↓')
+    : (_lang === 'es' ? 'Colapsar ↑'     : 'Collapse ↑');
+}
+</script>
+</body>
+</html>

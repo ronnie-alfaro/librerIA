@@ -1,0 +1,45 @@
+[project]
+name = "bookgraph"
+version = "0.1.0"
+description = "Local book RAG system with MCP server"
+requires-python = ">=3.11"
+dependencies = [
+    "pymupdf>=1.24.0",
+    "ebooklib>=0.18.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.2.0",
+    "chromadb>=1.0.0",
+    "qdrant-client>=1.11.0",
+    "sentence-transformers>=3.0.0",
+    "anthropic>=0.40.0",
+    "mcp[cli]>=1.0.0",
+    "rich>=13.7.0",
+    "click>=8.1.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+    "openai>=1.30.0",
+    "httpx>=0.27.0",
+    "json-repair>=0.30.0",
+    "langdetect>=1.0.9",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.4.0"]
+
+# ── Usage ─────────────────────────────────────────────────────────────────────
+# Install deps:    uv sync
+# Add a book:      uv run ingest.py path/to/book.pdf
+# Query locally:   uv run query.py "Who is connected to John and how?"
+# Start MCP:       uv run mcp_server.py
+# Start Web UI:    uv run app.py   →  http://localhost:8000
+#
+# Claude Desktop config (~/Library/Application Support/Claude/claude_desktop_config.json):
+# {
+#   "mcpServers": {
+#     "bookgraph": {
+#       "command": "uv",
+#       "args": ["--project", "/Users/ronnie/Documents/BookGraph", "run", "mcp_server.py"]
+#     }
+#   }
+# }

@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# uv
+uv.lock
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# BookGraph runtime data — never commit the vector store, books, covers, or LLM outputs
+db/
+
+# LLM credentials / local config
+config.toml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code internal files
+.claude/
+
+# Logs and temp files
+*.log
+*.tmp
+tmp/
+.env
