@@ -37,7 +37,20 @@ export function useIngest(onComplete: () => void) {
         const events = new EventSource(`/api/ingest/${jobId}`);
 
         events.onmessage = (event) => {
-          const data = JSON.parse(event.data) as IngestEvent;
+          let data: IngestEvent;
+          try {
+            data = JSON.parse(event.data) as IngestEvent;
+          } catch {
+            events.close();
+            setState((current) => ({
+              ...current,
+              stage: 'Error',
+              message: 'El servidor envió un evento inválido durante la indexación.',
+              progress: 0,
+              error: 'El servidor envió un evento inválido durante la indexación.',
+            }));
+            return;
+          }
 
           if (data.error) {
             events.close();

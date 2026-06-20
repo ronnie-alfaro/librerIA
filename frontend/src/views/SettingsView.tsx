@@ -46,7 +46,7 @@ export function SettingsView() {
     expand_model: expandModel,
     api_key: apiKey,
     context_limit: contextLimit,
-  }) {
+  }): Promise<string[]> {
     setLoadingModels(true);
     try {
       const result = await fetchConfigModels(payload);
@@ -56,9 +56,11 @@ export function SettingsView() {
         setExpandModel((current) => current && result.models.includes(current) ? current : result.models[0]);
       }
       if (result.error) setStatus(result.error);
+      return result.models;
     } catch (err) {
       setModels([]);
       setStatus(err instanceof Error ? err.message : 'No se pudieron cargar los modelos.');
+      return [];
     } finally {
       setLoadingModels(false);
     }
@@ -69,23 +71,40 @@ export function SettingsView() {
     setSaving(true);
     setStatus('');
     try {
-      await saveConfig({
+      const payload = {
         provider,
         answer_model: answerModel,
         expand_model: expandModel,
         base_url: baseUrl,
         api_key: apiKey,
         context_limit: contextLimit,
-      });
+      };
+      await saveConfig(payload);
       setStatus('Ajustes guardados.');
       if (apiKey) setHasKey(true);
-      await loadModels({
+      const availableModels = await loadModels({
         provider,
         answer_model: answerModel,
         expand_model: expandModel,
         base_url: baseUrl,
         context_limit: contextLimit,
       });
+      if (availableModels.length) {
+        const nextAnswerModel = availableModels.includes(answerModel) ? answerModel : availableModels[0];
+        const nextExpandModel = availableModels.includes(expandModel) ? expandModel : availableModels[0];
+        if (nextAnswerModel !== answerModel || nextExpandModel !== expandModel) {
+          setAnswerModel(nextAnswerModel);
+          setExpandModel(nextExpandModel);
+          await saveConfig({
+            provider,
+            answer_model: nextAnswerModel,
+            expand_model: nextExpandModel,
+            base_url: baseUrl,
+            context_limit: contextLimit,
+          });
+          setStatus('Ajustes guardados y modelos cargados.');
+        }
+      }
       setApiKey('');
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'No se pudieron guardar los ajustes.');

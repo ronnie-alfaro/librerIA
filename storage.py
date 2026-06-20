@@ -31,7 +31,11 @@ def _now() -> str:
 def connect() -> sqlite3.Connection:
     DB_DIR.mkdir(exist_ok=True)
     if not SQLITE_FILE.exists() and LEGACY_SQLITE_FILE.exists():
-        shutil.copy2(LEGACY_SQLITE_FILE, SQLITE_FILE)
+        try:
+            with sqlite3.connect(LEGACY_SQLITE_FILE) as legacy, sqlite3.connect(SQLITE_FILE) as target:
+                legacy.backup(target)
+        except sqlite3.Error:
+            shutil.copy2(LEGACY_SQLITE_FILE, SQLITE_FILE)
     conn = sqlite3.connect(SQLITE_FILE)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")

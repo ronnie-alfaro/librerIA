@@ -23,7 +23,7 @@ export async function streamQuery(
   });
 
   if (!response.ok || !response.body) {
-    throw new Error('No se pudo iniciar la consulta.');
+    throw new Error(`No se pudo iniciar la consulta (${response.status}). Reinicia el backend si acabas de actualizar la app.`);
   }
 
   const reader = response.body.getReader();
@@ -40,7 +40,11 @@ export async function streamQuery(
 
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
-      onEvent(JSON.parse(line.slice(6)) as QueryStreamEvent);
+      try {
+        onEvent(JSON.parse(line.slice(6)) as QueryStreamEvent);
+      } catch {
+        throw new Error('El servidor envió una respuesta inválida durante la consulta.');
+      }
     }
   }
 }

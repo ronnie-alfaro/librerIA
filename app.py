@@ -926,6 +926,16 @@ async def api_list_models(req: Request):
         return JSONResponse({"models": [], "error": str(exc)}, status_code=400)
 
 
+@app.get("/api/config/models")
+async def api_list_models_current():
+    provider = _g["llm"].provider
+    try:
+        models = list_available_models(provider)
+        return {"provider": provider, "models": models}
+    except Exception as exc:
+        return JSONResponse({"models": [], "error": str(exc)}, status_code=400)
+
+
 async def _save_upload_to_temp(file: UploadFile, suffix: str) -> Path:
     """Stream an uploaded book to a secure temp file while enforcing a size cap."""
     total = 0
