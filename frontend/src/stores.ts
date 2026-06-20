@@ -26,7 +26,7 @@ type ThemeState = {
 };
 
 function initialTheme(): ThemeMode {
-  const stored = window.localStorage.getItem('bookgraph_theme');
+  const stored = window.localStorage.getItem('libreria_theme');
   if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
   return 'light';
 }
@@ -34,7 +34,7 @@ function initialTheme(): ThemeMode {
 export const useThemeStore = create<ThemeState>((set, get) => ({
   mode: initialTheme(),
   setMode: (mode) => {
-    window.localStorage.setItem('bookgraph_theme', mode);
+    window.localStorage.setItem('libreria_theme', mode);
     set({ mode });
   },
   resolvedMode: () => {

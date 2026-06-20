@@ -54,7 +54,7 @@ export function App() {
     <div className="product-shell">
       <aside className="product-sidebar">
         <button className="brand-mark" onClick={() => setView('library')} aria-label="Abrir biblioteca">
-          <img src="/static/literarIA-circle.png" alt="BookGraph" />
+          <img src="/static/librerIA-circle.png" alt="librerIA" />
         </button>
 
         <nav className="primary-nav" aria-label="Navegación principal">
@@ -74,7 +74,7 @@ export function App() {
       <div className="product-main">
         <header className="topbar">
           <div>
-            <span className="micro-label">Espacio BookGraph</span>
+            <span className="micro-label">Espacio librerIA</span>
             <h1>{topbarTitle(activeView, activeTab, activeBook)}</h1>
           </div>
           <div className="topbar-actions">

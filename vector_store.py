@@ -1,5 +1,5 @@
 """
-Vector store abstraction for BookGraph.
+Vector store abstraction for librerIA.
 
 Chroma remains available for local development. Qdrant is the production-ready
 remote option selected with VECTOR_STORE=qdrant.
@@ -31,7 +31,7 @@ def _load_dotenv() -> None:
 
 
 def _point_id(passage_id: str) -> str:
-    return str(uuid5(NAMESPACE_URL, f"bookgraph:passage:{passage_id}"))
+    return str(uuid5(NAMESPACE_URL, f"libreria:passage:{passage_id}"))
 
 
 def _filter_from_where(where: Optional[dict[str, Any]]):

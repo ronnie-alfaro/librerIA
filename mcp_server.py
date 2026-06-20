@@ -1,19 +1,19 @@
 """
-BookGraph MCP Server — exposes your book library as tools for Claude, ChatGPT, and Gemini.
+librerIA MCP Server — expone tu biblioteca como herramientas para Claude, ChatGPT y Gemini.
 
-── Add to Claude Desktop ─────────────────────────────────────────────────────
+── Agregar a Claude Desktop ──────────────────────────────────────────────────
 File: ~/Library/Application Support/Claude/claude_desktop_config.json
 
 {
   "mcpServers": {
-    "bookgraph": {
+    "libreria": {
       "command": "uv",
-      "args": ["--project", "/Users/ronnie/Documents/BookGraph", "run", "mcp_server.py"]
+      "args": ["--project", "/Users/ronnie/Documents/librerIA", "run", "mcp_server.py"]
     }
   }
 }
 
-── Start manually ────────────────────────────────────────────────────────────
+── Iniciar manualmente ───────────────────────────────────────────────────────
     uv run mcp_server.py
 """
 
@@ -37,7 +37,7 @@ from query import (
 from llm import LLM
 from storage import migrate_json_files, list_books as list_stored_books, get_chapter_sections
 
-mcp = FastMCP("BookGraph")
+mcp = FastMCP("librerIA")
 
 # Models are loaded lazily — the first tool call triggers loading once.
 _embed:  SentenceTransformer | None = None
@@ -93,18 +93,18 @@ def search_books(query: str, book_title: str = "", top_k: int = 5) -> str:
 
     if not contexts:
         return (
-            "No relevant passages found. "
-            "The library may be empty — run `uv run ingest.py <book>` to add books."
+            "No se encontraron pasajes relevantes. "
+            "La biblioteca puede estar vacía; ejecuta `uv run ingest.py <libro>` para agregar libros."
         )
 
     parts = []
     for i, ctx in enumerate(contexts, 1):
         pg   = f" (p. {ctx['page_start']})" if ctx["page_start"] else ""
         parts.append(
-            f"[Source {i}]\n"
-            f"Book: {ctx['book_title']} by {ctx['author']}\n"
-            f"Chapter {ctx['chapter_num'] + 1}: {ctx['chapter_title']}{pg}\n"
-            f"Relevance: {ctx['score']:.2f}\n\n"
+            f"[Fuente {i}]\n"
+            f"Libro: {ctx['book_title']} · {ctx['author']}\n"
+            f"Capítulo {ctx['chapter_num'] + 1}: {ctx['chapter_title']}{pg}\n"
+            f"Relevancia: {ctx['score']:.2f}\n\n"
             f"{ctx['section_text']}"
         )
 
@@ -114,7 +114,7 @@ def search_books(query: str, book_title: str = "", top_k: int = 5) -> str:
 @mcp.tool()
 def list_books() -> str:
     """
-    List all books currently indexed in the BookGraph library.
+    List all books currently indexed in the librerIA library.
 
     Call this first to discover available titles before searching or
     retrieving chapters.
@@ -124,11 +124,11 @@ def list_books() -> str:
     if not books:
         return "No books indexed yet. Run: uv run ingest.py <path/to/book.pdf>"
 
-    lines = ["BookGraph Library\n"]
+    lines = ["Biblioteca librerIA\n"]
     for b in books:
         lines.append(
             f"  • {b['title']}  —  {b['author']}\n"
-            f"    {b['chapters']} chapters · {b['passages']} indexed passages\n"
+            f"    {b['chapters']} capítulos · {b['passages']} pasajes indexados\n"
             f"    ID: {b['id']}"
         )
     return "\n".join(lines)

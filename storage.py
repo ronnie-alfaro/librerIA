@@ -1,5 +1,5 @@
 """
-SQLite storage for BookGraph metadata, sections, and JSON analysis caches.
+SQLite storage for librerIA metadata, sections, and JSON analysis caches.
 
 Vectors live in Qdrant/Chroma. SQLite stores the structured app state and JSON
 payloads that used to live as many small files under db/.
@@ -7,6 +7,7 @@ payloads that used to live as many small files under db/.
 
 import hashlib
 import json
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +15,8 @@ from typing import Any, Optional
 
 BASE_DIR = Path(__file__).parent
 DB_DIR = BASE_DIR / "db"
-SQLITE_FILE = DB_DIR / "bookgraph.db"
+SQLITE_FILE = DB_DIR / "libreria.db"
+LEGACY_SQLITE_FILE = DB_DIR / "bookgraph.db"
 BOOKS_FILE = DB_DIR / "books.json"
 SECTIONS_DIR = DB_DIR / "sections"
 MAPS_DIR = DB_DIR / "maps"
@@ -28,6 +30,8 @@ def _now() -> str:
 
 def connect() -> sqlite3.Connection:
     DB_DIR.mkdir(exist_ok=True)
+    if not SQLITE_FILE.exists() and LEGACY_SQLITE_FILE.exists():
+        shutil.copy2(LEGACY_SQLITE_FILE, SQLITE_FILE)
     conn = sqlite3.connect(SQLITE_FILE)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")

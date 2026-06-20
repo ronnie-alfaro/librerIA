@@ -1,5 +1,5 @@
 """
-LLM provider abstraction for BookGraph.
+LLM provider abstraction for librerIA.
 
 Reads config.toml and exposes a single LLM interface regardless of whether
 the backend is Anthropic, OpenAI, Gemini, or a local llama.cpp / Ollama server.
@@ -115,7 +115,7 @@ def save_config(data: dict) -> None:
     if "context_limit" in data:
         p["context_limit"] = int(data["context_limit"])
 
-    lines = ["# BookGraph — LLM Configuration (managed by web UI or edited manually)\n\n"]
+    lines = ["# librerIA — LLM Configuration (managed by web UI or edited manually)\n\n"]
     lines.append(f'[llm]\nprovider = "{provider}"\n\n')
 
     for name in ("anthropic", "openai", "gemini", "local"):

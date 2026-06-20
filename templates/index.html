@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>BookGraph</title>
+<title>librerIA</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -140,7 +140,7 @@
 <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
 <nav class="w-52 shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col">
   <div class="px-3 py-3 border-b border-slate-800">
-    <img src="/static/literarIA-circle.png" alt="BookGraph" class="w-full h-auto object-contain"/>
+    <img src="/static/librerIA-circle.png" alt="librerIA" class="w-full h-auto object-contain"/>
   </div>
 
   <div class="flex-1 flex flex-col p-2 gap-1">
@@ -696,7 +696,7 @@
           <input id="cfg-context-limit" type="number" min="0" class="input"
                  placeholder="e.g. 4096 — must match --ctx-size for llama.cpp"/>
           <p class="text-xs text-slate-600 mt-1">
-            BookGraph trims retrieved sections to stay under this limit before sending to the model.
+            librerIA trims retrieved sections to stay under this limit before sending to the model.
           </p>
         </div>
 
@@ -831,13 +831,13 @@ const LANG = {
   },
 };
 
-let _lang = localStorage.getItem('bookgraph_lang') || 'en';
+let _lang = localStorage.getItem('libreria_lang') || 'en';
 
 function _t(key) { return (LANG[_lang] || LANG.en)[key] || LANG.en[key] || key; }
 
 function setLang(lang) {
   _lang = lang;
-  localStorage.setItem('bookgraph_lang', lang);
+  localStorage.setItem('libreria_lang', lang);
   const t = LANG[lang] || LANG.en;
 
   // Lang toggle button styles

@@ -18,7 +18,7 @@ export function LibraryView({ onOpenBook, onAnalyze }: Props) {
     <div className="page">
       <header className="page-header">
         <div>
-          <span className="eyebrow">Biblioteca BookGraph</span>
+          <span className="eyebrow">Biblioteca librerIA</span>
           <h1>Biblioteca</h1>
           <p>Agrega libros, sigue la indexación y administra tu colección local.</p>
         </div>

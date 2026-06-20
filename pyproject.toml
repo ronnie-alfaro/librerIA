@@ -1,5 +1,5 @@
 [project]
-name = "bookgraph"
+name = "libreria"
 version = "0.1.0"
 description = "Local book RAG system with MCP server"
 requires-python = ">=3.11"
@@ -37,9 +37,9 @@ dev = ["ruff>=0.4.0"]
 # Claude Desktop config (~/Library/Application Support/Claude/claude_desktop_config.json):
 # {
 #   "mcpServers": {
-#     "bookgraph": {
+#     "libreria": {
 #       "command": "uv",
-#       "args": ["--project", "/Users/ronnie/Documents/BookGraph", "run", "mcp_server.py"]
+#       "args": ["--project", "/Users/ronnie/Documents/librerIA", "run", "mcp_server.py"]
 #     }
 #   }
 # }

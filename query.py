@@ -1,5 +1,5 @@
 """
-Query your BookGraph library from the terminal.
+Query your librerIA library from the terminal.
 
 Usage:
     uv run query.py "Who is connected to John and how?"
@@ -247,7 +247,7 @@ def query(
         console.print(f"[red]{err}[/]")
         sys.exit(1)
 
-    console.print(f"\n[bold cyan]BookGraph Query[/]  [dim]({llm.provider} · {llm.answer_model})[/]")
+    console.print(f"\n[bold cyan]librerIA Query[/]  [dim]({llm.provider} · {llm.answer_model})[/]")
     console.print(f"  [italic]{question}[/]")
     if book:
         console.print(f"  Filter → [green]{book}[/]")

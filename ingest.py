@@ -1,5 +1,5 @@
 """
-Ingest a PDF or EPUB book into BookGraph.
+Ingest a PDF or EPUB book into librerIA.
 
 Usage:
     uv run ingest.py book.pdf
@@ -222,7 +222,7 @@ def split_passages(text: str) -> list[str]:
 @click.option("--author",   default=None, help="Override auto-detected author")
 @click.option("--language", default=None, help="Language code: en · es · fr (auto-detected if omitted)")
 def ingest(book_path: str, title: Optional[str], author: Optional[str], language: Optional[str]):
-    """Parse a PDF or EPUB and index it into the BookGraph vector store."""
+    """Parse a PDF or EPUB and index it into the librerIA vector store."""
     setup_dirs()
     path   = Path(book_path)
     suffix = path.suffix.lower()
@@ -240,7 +240,7 @@ def ingest(book_path: str, title: Optional[str], author: Optional[str], language
     bid      = make_book_id(title, author)
     language = language or detect_language(chapters)
 
-    console.print(f"\n[bold cyan]BookGraph — Ingest[/]")
+    console.print(f"\n[bold cyan]librerIA — Ingest[/]")
     console.print(f"  Book    : [green]{title}[/] by [green]{author}[/]")
     console.print(f"  Language: [cyan]{language}[/]")
     console.print(f"  Chapters: {len(chapters)}")

@@ -1,5 +1,5 @@
 """
-BookGraph Web App
+librerIA Web App
 
 Usage:
     uv run app.py        →  http://localhost:8000
