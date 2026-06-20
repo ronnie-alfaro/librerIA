@@ -5,6 +5,29 @@ import type { LlmConfig } from '../domain';
 const providers = ['anthropic', 'openai', 'gemini', 'local'];
 type ModelLoadPayload = Partial<LlmConfig> & { api_key?: string };
 
+const providerDefaults: Record<string, { baseUrl: string; answerModel: string; expandModel: string }> = {
+  anthropic: {
+    baseUrl: 'https://api.anthropic.com/v1',
+    answerModel: 'claude-sonnet-4-6',
+    expandModel: 'claude-haiku-4-5-20251001',
+  },
+  openai: {
+    baseUrl: 'https://api.openai.com/v1',
+    answerModel: 'gpt-4o',
+    expandModel: 'gpt-4o-mini',
+  },
+  gemini: {
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    answerModel: 'gemini-2.0-flash',
+    expandModel: 'gemini-2.0-flash',
+  },
+  local: {
+    baseUrl: 'http://localhost:8080/v1',
+    answerModel: 'local',
+    expandModel: 'local',
+  },
+};
+
 export function SettingsView() {
   const [provider, setProvider] = useState('anthropic');
   const [answerModel, setAnswerModel] = useState('');
@@ -24,13 +47,13 @@ export function SettingsView() {
         setProvider(config.provider);
         setAnswerModel(config.answer_model);
         setExpandModel(config.expand_model);
-        setBaseUrl(config.base_url);
+        setBaseUrl(normalizeBaseUrl(config.provider, config.base_url));
         setContextLimit(config.context_limit);
         setHasKey(config.has_key);
         if (config.has_key || config.provider === 'local') {
           void loadModels({
             provider: config.provider,
-            base_url: config.base_url,
+            base_url: normalizeBaseUrl(config.provider, config.base_url),
             answer_model: config.answer_model,
             expand_model: config.expand_model,
           });
@@ -75,7 +98,7 @@ export function SettingsView() {
         provider,
         answer_model: answerModel,
         expand_model: expandModel,
-        base_url: baseUrl,
+        base_url: normalizeBaseUrl(provider, baseUrl),
         api_key: apiKey,
         context_limit: contextLimit,
       };
@@ -86,7 +109,7 @@ export function SettingsView() {
         provider,
         answer_model: answerModel,
         expand_model: expandModel,
-        base_url: baseUrl,
+        base_url: normalizeBaseUrl(provider, baseUrl),
         context_limit: contextLimit,
       });
       if (availableModels.length) {
@@ -99,7 +122,7 @@ export function SettingsView() {
             provider,
             answer_model: nextAnswerModel,
             expand_model: nextExpandModel,
-            base_url: baseUrl,
+            base_url: normalizeBaseUrl(provider, baseUrl),
             context_limit: contextLimit,
           });
           setStatus('Ajustes guardados y modelos cargados.');
@@ -129,7 +152,12 @@ export function SettingsView() {
           <select
             value={provider}
             onChange={(event) => {
-              setProvider(event.target.value);
+              const nextProvider = event.target.value;
+              const defaults = providerDefaults[nextProvider] || providerDefaults.local;
+              setProvider(nextProvider);
+              setBaseUrl(defaults.baseUrl);
+              setAnswerModel(defaults.answerModel);
+              setExpandModel(defaults.expandModel);
               setModels([]);
             }}
           >
@@ -178,4 +206,15 @@ export function SettingsView() {
       </form>
     </div>
   );
+}
+
+function normalizeBaseUrl(provider: string, baseUrl: string) {
+  const current = baseUrl.trim();
+  if (provider === 'local') {
+    return current || providerDefaults.local.baseUrl;
+  }
+  if (!current || /localhost|127\.0\.0\.1/.test(current)) {
+    return providerDefaults[provider]?.baseUrl || current;
+  }
+  return current;
 }
