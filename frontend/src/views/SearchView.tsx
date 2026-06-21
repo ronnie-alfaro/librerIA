@@ -38,23 +38,46 @@ export function SearchView() {
       </header>
 
       <form className="search-panel" onSubmit={submit}>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busca en tu biblioteca..." />
-        <select value={bookId} onChange={(event) => setBookId(event.target.value)}>
-          <option value="">Todos los libros</option>
-          {books.map((book) => (
-            <option value={book.id} key={book.id}>
-              {book.title}
-            </option>
-          ))}
-        </select>
-        <label>
-          Resultados
-          <input type="range" min="1" max="30" value={topK} onChange={(event) => setTopK(Number(event.target.value))} />
-          <strong>{topK}</strong>
-        </label>
-        <button className="button" disabled={loading || !query.trim()}>
-          {loading ? 'Buscando...' : 'Buscar'}
-        </button>
+        <div className="search-hero">
+          <label className="search-query">
+            <span>Consulta</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Busca escenas, temas, personajes o frases..."
+            />
+          </label>
+
+          <button className="button search-submit" disabled={loading || !query.trim()}>
+            {loading ? 'Buscando...' : 'Buscar'}
+          </button>
+        </div>
+
+        <div className="search-controls">
+          <label className="control-field">
+            <span>Libro</span>
+            <select value={bookId} onChange={(event) => setBookId(event.target.value)}>
+              <option value="">Todos los libros</option>
+              {books.map((book) => (
+                <option value={book.id} key={book.id}>
+                  {book.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="control-field range-field">
+            <div className="range-head">
+              <span>Resultados</span>
+              <strong>{topK}</strong>
+            </div>
+            <input type="range" min="1" max="30" value={topK} onChange={(event) => setTopK(Number(event.target.value))} />
+            <div className="range-scale">
+              <span>1</span>
+              <span>30</span>
+            </div>
+          </label>
+        </div>
       </form>
 
       {error && <div className="alert">{error}</div>}
@@ -64,8 +87,10 @@ export function SearchView() {
           <article className="result-card" key={`${result.book_id}-${result.chapter_num}-${index}`}>
             <div className="result-head">
               <span className="pill success">{Math.round(result.score * 100)}%</span>
-              <strong>{result.book_title}</strong>
-              <span>Cap. {result.chapter_num + 1}: {result.chapter_title}</span>
+              <div className="result-meta">
+                <strong>{result.book_title}</strong>
+                <span>Cap. {result.chapter_num + 1}: {result.chapter_title}</span>
+              </div>
             </div>
             <p>{result.text}</p>
           </article>

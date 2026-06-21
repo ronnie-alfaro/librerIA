@@ -120,26 +120,44 @@ export async function streamTask(url: string, onEvent: (event: TaskStreamEvent) 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let lastActivity = Date.now();
+  let lastHeartbeat = 0;
+  const heartbeatInterval = window.setInterval(() => {
+    const idleMs = Date.now() - lastActivity;
+    if (idleMs < 15000) return;
+    if (Date.now() - lastHeartbeat < 10000) return;
+    lastHeartbeat = Date.now();
+    onEvent({
+      stage: 'waiting',
+      msg: `Sin novedades por ${Math.floor(idleMs / 1000)}s. El modelo sigue procesando...`,
+      heartbeat: true,
+    });
+  }, 5000);
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      lastActivity = Date.now();
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      let parsed: TaskStreamEvent;
-      try {
-        parsed = JSON.parse(line.slice(6)) as TaskStreamEvent;
-      } catch {
-        throw new Error('El servidor envió un evento inválido. Reinicia el backend e intenta de nuevo.');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let parsed: TaskStreamEvent;
+        try {
+          parsed = JSON.parse(line.slice(6)) as TaskStreamEvent;
+        } catch {
+          throw new Error('El servidor envió un evento inválido. Reinicia el backend e intenta de nuevo.');
+        }
+        if ('data' in parsed && parsed.data) {
+          parsed.data = characterMapSchema.parse(parsed.data);
+        }
+        onEvent(parsed);
       }
-      if ('data' in parsed && parsed.data) {
-        parsed.data = characterMapSchema.parse(parsed.data);
-      }
-      onEvent(parsed);
     }
+  } finally {
+    window.clearInterval(heartbeatInterval);
   }
 }

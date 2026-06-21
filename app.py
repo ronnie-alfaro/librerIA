@@ -160,22 +160,42 @@ Rules:
 """
 
 _CHART_PROMPT = """\
-Create a comprehensive character profile for **{name}** from the provided passages.
+THINK de la tarea:
+T - Tarea: redacta una ficha completa y útil del personaje **{name}** a partir de los pasajes proporcionados.
+H - Hechos: usa únicamente información respaldada por los pasajes. Si un dato no aparece, no lo inventes.
+I - Invariantes: la salida final debe estar en español, aunque el libro esté en otro idioma. No uses inglés en títulos, etiquetas ni cuerpo.
+N - Narrativa: prioriza rasgos, tensiones, evolución, vínculos y escenas que revelen al personaje. Evita redundancias.
+K - Keep format: respeta exactamente las secciones y el orden indicados abajo. No añadas texto fuera de ellas.
 
-Use exactly these ## section headings in this order:
+Devuelve SOLO texto en markdown con estas secciones, en este orden y con estos títulos exactos:
 
-## Identity
-## Personality & Motivation
-## Background
-## Relationships
-Format each relationship as a bullet: **Name** — description of the connection
-## Character Arc
-## Key Moments
-Number each item. Start with a **bold scene title**, then one sentence.
-## Notable Quotes
-Format every quote as a blockquote: > "text" — chapter or context
+## Identidad
+Describe quién es el personaje, su lugar en la historia y su función narrativa.
 
-Be specific. Cite chapter or section where relevant. Do not speculate beyond the text.\
+## Personalidad y motivación
+Explica sus rasgos dominantes, deseos, temores, contradicciones y lo que lo mueve.
+
+## Trasfondo
+Resume su origen, contexto familiar/social y antecedentes relevantes.
+
+## Relaciones
+Incluye una lista con viñetas. Formato exacto: **Nombre** — descripción breve de la conexión.
+
+## Arco del personaje
+Describe cómo cambia o se revela a lo largo de la obra.
+
+## Momentos clave
+Enumera entre 3 y 6 momentos. Formato exacto: número, **título breve en negrita**, y una sola oración de explicación.
+
+## Citas destacadas
+Incluye de 2 a 4 citas textuales si existen. Formato exacto: bloque de cita con una línea breve de contexto al final.
+
+Reglas adicionales:
+- Mantén la redacción natural, clara y madura.
+- No traduzcas nombres propios.
+- No mezcles idiomas.
+- No especules más allá de lo que muestran los pasajes.
+- Si un apartado tiene poca evidencia, dilo de forma explícita y breve.\
 """
 
 _RELATION_PROMPT = """\
@@ -1247,15 +1267,12 @@ async def api_char_chart(book_id: str, character: str, regen: bool = False):
         yield sse({"stage": "analyzing", "msg": msg})
 
         ctx_text  = build_context_block(contexts)
-        lang      = book.get("language", "en")
-        lang_name = {"en": "English", "es": "Spanish", "fr": "French"}.get(lang, "English")
-
         yield sse({"stage": "waiting", "msg": f"Esperando respuesta de {llm.provider}..."})
         chunks = []
         async for chunk in llm.stream(
             messages=[{"role": "user",
                         "content": f"Passages:\n\n{ctx_text}\n\n---\n\n{prompt}"}],
-            system=f"You are a literary analyst. Create detailed, well-structured character profiles. Respond entirely in {lang_name}.",
+            system="Eres un analista literario. Redacta perfiles de personaje claros, precisos y completos. Responde únicamente en español neutro.",
             max_tokens=3000,
         ):
             chunks.append(chunk)

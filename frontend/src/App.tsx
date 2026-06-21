@@ -54,7 +54,13 @@ export function App() {
     <div className="product-shell">
       <aside className="product-sidebar">
         <button className="brand-mark" onClick={() => setView('library')} aria-label="Abrir biblioteca">
-          <img src="/static/librerIA-circle.png" alt="librerIA" />
+          <span className="brand-mark__art">
+            <img src="/static/librerIA-circle.png" alt="librerIA" />
+          </span>
+          <span className="brand-mark__copy">
+            <strong>librerIA</strong>
+            <small>Lectura aumentada</small>
+          </span>
         </button>
 
         <nav className="primary-nav" aria-label="Navegación principal">

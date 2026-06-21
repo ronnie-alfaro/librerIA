@@ -109,6 +109,7 @@ export type QuerySource = {
 export type TaskStreamEvent = {
   stage?: string;
   msg?: string;
+  heartbeat?: boolean;
   type?: 'text';
   text?: string;
   done?: boolean;
