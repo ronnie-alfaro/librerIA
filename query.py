@@ -47,7 +47,7 @@ SYSTEM_PROMPT = """\
 You are a meticulous literary analyst. Answer questions about the book passages provided below.
 
 Rules:
-- Respond in the same language as the user's question. If the question is in Spanish, respond entirely in Spanish.
+- Respond entirely in Spanish, regardless of the question language or the book language.
 - For character/relationship questions: identify EVERY person mentioned in relation to the subject,
   describe each relationship precisely (ally, enemy, family, mentor, rival…), and note how it evolves.
 - For thematic or conceptual questions: draw specific textual evidence from the passages.
@@ -79,8 +79,8 @@ def expand_queries(question: str, llm: "LLM") -> list[str]:
             messages=[{
                 "role": "user",
                 "content": (
-                    "Generate 3 short alternative search queries to find relevant book passages "
-                    "for this question. Return only the queries, one per line, no numbers.\n\n"
+                    "Genera 3 consultas cortas alternativas para encontrar pasajes relevantes del libro "
+                    "para esta pregunta. Devuelve solo las consultas, una por línea, sin números.\n\n"
                     f"Question: {question}"
                 ),
             }],
@@ -219,7 +219,7 @@ def answer(question: str, contexts: list[dict], llm: "LLM") -> str:
                 f"\n\n{'─' * 60}\n\nQuestion: {question}"
             ),
         }],
-        system=SYSTEM_PROMPT,
+        system=SYSTEM_PROMPT + "\n- Use natural, fluent Spanish with clear sections when useful.",
         max_tokens=2048,
     )
 

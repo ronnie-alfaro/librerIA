@@ -105,19 +105,21 @@ function RichProfileText({ text }: { text: string }) {
           return <blockquote key={index}>{cleanInline(block.replace(/^>\s?/, ''))}</blockquote>;
         }
         if (/^\d+\.\s/m.test(block)) {
+          const items = collectListItems(block, /^\d+\.\s*/);
           return (
             <ol key={index}>
-              {block.split('\n').filter(Boolean).map((line) => (
-                <li key={line}>{cleanInline(line.replace(/^\d+\.\s*/, ''))}</li>
+              {items.map((item) => (
+                <li key={item}>{cleanInline(item)}</li>
               ))}
             </ol>
           );
         }
         if (/^[-*]\s/m.test(block)) {
+          const items = collectListItems(block, /^[-*]\s*/);
           return (
             <ul key={index}>
-              {block.split('\n').filter(Boolean).map((line) => (
-                <li key={line}>{cleanInline(line.replace(/^[-*]\s*/, ''))}</li>
+              {items.map((item) => (
+                <li key={item}>{cleanInline(item)}</li>
               ))}
             </ul>
           );
@@ -179,11 +181,15 @@ function translateSectionTitle(title: string) {
   const titles: Record<string, string> = {
     Identity: 'Identidad',
     'Personality & Motivation': 'Personalidad y motivación',
+    Personality: 'Personalidad y motivación',
+    Motivation: 'Personalidad y motivación',
     Background: 'Trasfondo',
     Relationships: 'Relaciones',
     'Character Arc': 'Arco del personaje',
     'Key Moments': 'Momentos clave',
+    'Character Moments': 'Momentos clave',
     'Notable Quotes': 'Citas destacadas',
+    Overview: 'Perfil',
   };
   return titles[title] || title;
 }
@@ -204,4 +210,23 @@ function initials(name: string) {
   const parts = name.split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
   return parts.slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+}
+
+function collectListItems(block: string, marker: RegExp) {
+  const items: string[] = [];
+  let current = '';
+
+  for (const rawLine of block.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (marker.test(line)) {
+      if (current) items.push(current.trim());
+      current = line.replace(marker, '').trim();
+    } else {
+      current = current ? `${current} ${line}` : line;
+    }
+  }
+
+  if (current) items.push(current.trim());
+  return items;
 }

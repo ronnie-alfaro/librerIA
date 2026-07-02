@@ -170,48 +170,64 @@ def list_available_models(provider: str | None = None, overrides: dict | None = 
     provider = provider or cfg.get("llm", {}).get("provider", "anthropic")
     pcfg = _provider_config(provider, overrides)
 
-    try:
-        if provider == "anthropic":
-            key = pcfg.get("api_key", "")
-            if not key:
-                return _MODEL_FALLBACKS["anthropic"]
-            resp = httpx.get(
-                "https://api.anthropic.com/v1/models",
-                headers={
-                    "x-api-key": key,
-                    "anthropic-version": "2023-06-01",
-                },
-                timeout=_TIMEOUT_REMOTE,
-            )
-            resp.raise_for_status()
-            data = resp.json().get("data", [])
-            models = [item.get("id", "") for item in data if item.get("id")]
-            return sorted(set(models)) or _MODEL_FALLBACKS["anthropic"]
+    if provider == "anthropic":
+        key = pcfg.get("api_key", "")
+        if not key:
+            return _MODEL_FALLBACKS["anthropic"]
+        resp = httpx.get(
+            "https://api.anthropic.com/v1/models",
+            headers={
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01",
+            },
+            timeout=_TIMEOUT_REMOTE,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        models = [item.get("id", "") for item in data if item.get("id")]
+        if not models:
+            raise RuntimeError("anthropic returned no models from /models.")
+        return sorted(set(models))
 
-        if provider in ("openai", "gemini", "local"):
-            base_url = pcfg.get("base_url") or _DEFAULTS.get(provider, {}).get("base_url", "")
-            if provider == "gemini":
-                base_url = _DEFAULTS["gemini"]["base_url"]
-            key = pcfg.get("api_key") or "no-key"
-            timeout = _TIMEOUT_LOCAL if provider == "local" else _TIMEOUT_REMOTE
+    if provider in ("openai", "gemini", "local"):
+        base_url = pcfg.get("base_url") or _DEFAULTS.get(provider, {}).get("base_url", "")
+        if provider == "gemini":
+            base_url = _DEFAULTS["gemini"]["base_url"]
+        key = pcfg.get("api_key") or "no-key"
+        if provider != "local" and not key:
+            raise RuntimeError(f"No API key configured for provider '{provider}'.")
+        timeout = _TIMEOUT_LOCAL if provider == "local" else _TIMEOUT_REMOTE
+        try:
             resp = httpx.get(
                 f"{base_url.rstrip('/')}/models",
                 headers={"Authorization": f"Bearer {key}"},
                 timeout=timeout,
             )
             resp.raise_for_status()
-            payload = resp.json()
-            data = payload.get("data", payload.get("models", []))
-            models = [
-                item.get("id") or item.get("name")
-                for item in data
-                if isinstance(item, dict) and (item.get("id") or item.get("name"))
-            ]
-            return sorted(set(models)) or _MODEL_FALLBACKS.get(provider, [])
-    except Exception:
-        return _MODEL_FALLBACKS.get(provider, [])
+        except httpx.HTTPStatusError as exc:
+            body = (exc.response.text or "").strip().replace("\n", " ")
+            snippet = body[:240]
+            raise RuntimeError(
+                f"Could not list {provider} models (HTTP {exc.response.status_code}). "
+                f"{snippet or 'Check the API key, project access, and base URL.'}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise RuntimeError(
+                f"Could not reach {provider} model endpoint at {base_url.rstrip('/')}/models: {exc}"
+            ) from exc
 
-    return _MODEL_FALLBACKS.get(provider, [])
+        payload = resp.json()
+        data = payload.get("data", payload.get("models", []))
+        models = [
+            item.get("id") or item.get("name")
+            for item in data
+            if isinstance(item, dict) and (item.get("id") or item.get("name"))
+        ]
+        if not models:
+            raise RuntimeError(f"{provider} returned no models from /models.")
+        return sorted(set(models))
+
+    raise RuntimeError(f"Unknown provider '{provider}'.")
 
 
 class LLM:
@@ -241,6 +257,7 @@ class LLM:
         self.answer_model  = pcfg.get("answer_model", "")
         self.expand_model  = pcfg.get("expand_model", self.answer_model)
         self.context_limit = int(pcfg.get("context_limit", 0))
+        self.base_url      = pcfg.get("base_url", "")
 
         if self.provider == "anthropic":
             import anthropic
@@ -301,6 +318,14 @@ class LLM:
                 system=system or "", messages=messages,
             )
             return resp.content[0].text
+        elif self.provider == "openai":
+            resp = self._sync.responses.create(
+                model=m,
+                instructions=system or "",
+                input=_messages_to_openai_input(messages),
+                max_output_tokens=max_tokens,
+            )
+            return getattr(resp, "output_text", "") or _extract_response_text(resp)
         else:
             msgs = ([{"role": "system", "content": system}] if system else []) + messages
             resp = self._sync.chat.completions.create(
@@ -324,6 +349,14 @@ class LLM:
                 system=system or "", messages=messages,
             )
             return resp.content[0].text
+        elif self.provider == "openai":
+            resp = await self._async.responses.create(
+                model=m,
+                instructions=system or "",
+                input=_messages_to_openai_input(messages),
+                max_output_tokens=max_tokens,
+            )
+            return getattr(resp, "output_text", "") or _extract_response_text(resp)
         else:
             msgs = ([{"role": "system", "content": system}] if system else []) + messages
             resp = await self._async.chat.completions.create(
@@ -349,6 +382,18 @@ class LLM:
             ) as s:
                 async for chunk in s.text_stream:
                     yield chunk
+        elif self.provider == "openai":
+            async with self._async.responses.stream(
+                model=m,
+                instructions=system or "",
+                input=_messages_to_openai_input(messages),
+                max_output_tokens=max_tokens,
+            ) as s:
+                async for event in s:
+                    if getattr(event, "type", "") == "response.output_text.delta":
+                        delta = getattr(event, "delta", "")
+                        if delta:
+                            yield delta
         else:
             msgs = ([{"role": "system", "content": system}] if system else []) + messages
             resp = await self._async.chat.completions.create(
@@ -367,4 +412,35 @@ class LLM:
             "answer_model":  self.answer_model,
             "expand_model":  self.expand_model,
             "context_limit": self.context_limit,
+            "base_url":      self.base_url,
         }
+
+
+def _messages_to_openai_input(messages: list[dict]) -> list[dict]:
+    items: list[dict] = []
+    for msg in messages:
+        role = str(msg.get("role", "user")).strip().lower()
+        content = str(msg.get("content", "")).strip()
+        if not content:
+            continue
+        if role == "system":
+            items.append({"role": "developer", "content": content})
+        elif role == "assistant":
+            items.append({"role": "assistant", "content": content})
+        else:
+            items.append({"role": "user", "content": content})
+    return items
+
+
+def _extract_response_text(resp) -> str:
+    chunks: list[str] = []
+    try:
+        for item in getattr(resp, "output", []) or []:
+            for content in getattr(item, "content", []) or []:
+                if getattr(content, "type", "") == "output_text":
+                    text = getattr(content, "text", "")
+                    if text:
+                        chunks.append(text)
+    except Exception:
+        return ""
+    return "".join(chunks)

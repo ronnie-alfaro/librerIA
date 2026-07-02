@@ -8,6 +8,8 @@ Usage:
 import re
 import sys
 import json
+import time
+import logging
 import shutil
 import asyncio
 import hashlib
@@ -60,6 +62,7 @@ PROFILES_DIR  = BASE_DIR / "db" / "profiles"
 SUMMARIES_DIR = BASE_DIR / "db" / "summaries"
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 1024 * 1024
+logger = logging.getLogger("libreria")
 
 def _load_books() -> list:
     return list_books()
@@ -72,25 +75,25 @@ def _save_books(books: list) -> None:
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
 _MAP_PROMPT = """\
-Extract characters and relationships from the passages below.
-Return ONLY valid JSON — no markdown, no explanation, nothing else.
+Extrae personajes, relaciones y eventos de los pasajes de abajo.
+Devuelve SOLO JSON válido, sin markdown, sin explicación y sin texto extra.
 
 {
   "characters": [
-    {"id": "snake_case_id", "name": "Full Name",
+    {"id": "snake_case_id", "name": "Nombre completo",
      "role": "protagonist|antagonist|supporting|minor",
-     "description": "one sentence, max 12 words"}
+     "description": "una sola oración, máximo 12 palabras"}
   ],
   "relationships": [
     {"from": "id1", "to": "id2",
      "type": "family|ally|enemy|romantic|mentor|rival|neutral",
-     "label": "2-4 words"}
+     "label": "2 a 4 palabras"}
   ],
   "events": [
-    {"title": "Short title, max 5 words",
-     "description": "one sentence, max 20 words",
+    {"title": "Título breve, máximo 5 palabras",
+     "description": "una sola oración, máximo 20 palabras",
      "type": "battle|death|romance|betrayal|discovery|meeting|journey|ceremony|political|transformation|conflict|other",
-     "characters": ["id1"],
+    "characters": ["id1"],
      "is_climax": false,
      "is_resolution": false,
      "is_epilogue": false}
@@ -98,51 +101,51 @@ Return ONLY valid JSON — no markdown, no explanation, nothing else.
 }
 
 Rules:
-- Include EVERY named character found in the passages — do not omit anyone.
-- Max 25 characters total; named people only.
-- Every id in relationships must exist in the characters list.
-- Include ALL relationships visible in the passages; do not omit connections.
-- If two named characters appear in the same passage, that is at minimum a "neutral" relationship — include it.
-- Descriptions max 20 words. Labels max 4 words. Event titles max 5 words.
-- Extract 10–20 key events in narrative (chronological) order — more is better; cover the full arc from beginning through climax to resolution.
-- You MUST include the climactic turning point (set is_climax:true) and the final resolution (set is_resolution:true); these are mandatory.
-- If the book has an epilogue or a post-resolution scene, include it as a separate event with is_epilogue:true.
-- Do not stop at the middle of the story — the final events in the passages are as important as the opening ones.
-- Choose the most accurate event type from the allowed list.\
+- Incluye TODOS los personajes nombrados en los pasajes; no omitas a nadie.
+- Máximo 25 personajes en total; solo personas nombradas.
+- Cada id en relationships debe existir en la lista de characters.
+- Incluye TODAS las relaciones visibles en los pasajes; no omitas conexiones.
+- Si dos personajes nombrados aparecen en el mismo pasaje, eso ya cuenta al menos como relación "neutral".
+- Descripciones máximo 20 palabras. Labels máximo 4 palabras. Títulos de eventos máximo 5 palabras.
+- Extrae entre 10 y 20 eventos clave en orden narrativo (cronológico); cubre todo el arco desde el inicio hasta el clímax y la resolución.
+- Debes incluir el punto de giro climático (is_climax:true) y la resolución final (is_resolution:true); son obligatorios.
+- Si el libro tiene epílogo o escena posterior a la resolución, inclúyela como evento separado con is_epilogue:true.
+- No te detengas a mitad de la historia; los eventos finales son tan importantes como los iniciales.
+- Elige el tipo de evento más preciso de la lista permitida.\
 """
 
 _DISCOVER_PROMPT = """\
-List every named individual (person) mentioned in the passages below.
-Return ONLY a JSON array — no markdown, no explanation.
+Lista cada persona nombrada mencionada en los pasajes de abajo.
+Devuelve SOLO un arreglo JSON, sin markdown ni explicación.
 
-[{"id": "snake_case_id", "name": "Full Name"}]
+[{"id": "snake_case_id", "name": "Nombre completo"}]
 
 Rules:
-- Include every named person regardless of how minor their role.
-- Do not include places, organisations, or unnamed characters.
-- Use snake_case for id (lower case, spaces to underscores).\
+- Incluye cada persona nombrada sin importar qué tan menor sea su papel.
+- No incluyas lugares, organizaciones ni personajes sin nombre.
+- Usa snake_case para el id (minúsculas, espacios a guiones bajos).\
 """
 
 _SECTION_GRAPH_PROMPT = """\
-Extract a local character graph from this book section.
-Return ONLY valid JSON — no markdown, no explanation.
+Extrae un grafo local de personajes de esta sección del libro.
+Devuelve SOLO JSON válido, sin markdown ni explicación.
 
 {
   "characters": [
-    {"name": "Full Name",
-     "aliases": ["alternate name"],
+    {"name": "Nombre completo",
+     "aliases": ["nombre alternativo"],
      "role": "protagonist|antagonist|supporting|minor",
-     "description": "one sentence, max 14 words"}
+     "description": "una sola oración, máximo 14 palabras"}
   ],
   "relationships": [
-    {"from": "Full Name", "to": "Full Name",
+    {"from": "Nombre completo", "to": "Nombre completo",
      "type": "family|ally|enemy|romantic|mentor|rival|neutral",
-     "label": "2-4 words",
-     "evidence": "short reason from this section, max 18 words"}
+     "label": "2 a 4 palabras",
+     "evidence": "razón breve tomada de esta sección, máximo 18 palabras"}
   ],
   "events": [
-    {"title": "Short title, max 5 words",
-     "description": "one sentence, max 20 words",
+    {"title": "Título breve, máximo 5 palabras",
+     "description": "una sola oración, máximo 20 palabras",
      "type": "battle|death|romance|betrayal|discovery|meeting|journey|ceremony|political|transformation|conflict|other",
      "characters": ["Full Name"],
      "is_climax": false,
@@ -152,18 +155,20 @@ Return ONLY valid JSON — no markdown, no explanation.
 }
 
 Rules:
-- Extract only named people present in this section.
-- Include minor characters if named.
-- Include every explicit relationship visible in this section.
-- If two named characters interact or are discussed together, include at least a neutral relationship.
-- Do not invent facts outside this section.\
+- Extrae solo personas nombradas presentes en esta sección.
+- Incluye personajes menores si están nombrados.
+- Incluye cada relación explícita visible en esta sección.
+- Si dos personajes nombrados interactúan o son mencionados juntos, incluye al menos una relación neutral.
+- No dividas al mismo personaje en variantes separadas por título, apellido parcial o nombre corto. Usa un solo nodo canónico y agrega variantes en "aliases".
+- Si aparece "Doctora Vera Castillo", "Vera Castillo" y "Vera", trata esas variantes como una sola persona cuando el contexto lo permita.
+- No inventes hechos fuera de esta sección.\
 """
 
 _CHART_PROMPT = """\
 THINK de la tarea:
 T - Tarea: redacta una ficha completa y útil del personaje **{name}** a partir de los pasajes proporcionados.
 H - Hechos: usa únicamente información respaldada por los pasajes. Si un dato no aparece, no lo inventes.
-I - Invariantes: la salida final debe estar en español, aunque el libro esté en otro idioma. No uses inglés en títulos, etiquetas ni cuerpo.
+I - Invariantes: la salida final debe estar en español, aunque el libro esté en otro idioma. No uses inglés en títulos, etiquetas ni cuerpo. Evita títulos como "Identity", "Character Arc", "Key Moments" o "Character Moments".
 N - Narrativa: prioriza rasgos, tensiones, evolución, vínculos y escenas que revelen al personaje. Evita redundancias.
 K - Keep format: respeta exactamente las secciones y el orden indicados abajo. No añadas texto fuera de ellas.
 
@@ -199,47 +204,60 @@ Reglas adicionales:
 """
 
 _RELATION_PROMPT = """\
-Analyze the relationship between **{name_a}** and **{name_b}** from the passages below.
+Analiza la relación entre **{name_a}** y **{name_b}** a partir de los pasajes de abajo.
 
-Use exactly these ## section headings in this order:
+Usa exactamente estos títulos de sección, en este orden:
 
-## How They Met
-## Dynamic & Power Balance
-## Key Scenes Together
-Number each scene: **Bold scene title.** One sentence description.
-## How It Evolved
-## Tension & Current Status
-One or two sentences on where the relationship stands and the underlying tension.
+## Cómo se conocieron
+## Dinámica y balance de poder
+## Escenas clave juntos
+Numera cada escena: **título breve en negrita.** Una oración de descripción.
+## Cómo evolucionó
+## Tensión y estado actual
+Una o dos oraciones sobre el estado de la relación y la tensión de fondo.
 
-Be specific. Cite chapter or section where relevant. Do not speculate beyond the text.\
+Sé específico. Cita capítulo o sección cuando sea relevante. No especules más allá del texto.\
 """
 
 _CHAPTER_PROMPT = """\
-Write a comprehensive summary for Chapter {num}: **{title}**.
+Escribe un resumen completo del capítulo {num}: **{title}**.
 
-Use exactly these ## section headings in this order:
+Usa exactamente estos títulos de sección, en este orden:
 
-## Overview
-One paragraph: what happens, the key stakes, and why this chapter matters.
+## Panorama general
+Un párrafo: qué sucede, cuáles son las apuestas clave y por qué este capítulo importa.
 
-## Key Events
-Number each event. Start with a **bold title**, then one sentence.
+## Eventos clave
+Numera cada evento. Empieza con un **título en negrita** y luego una sola oración.
 
-## Character Moments
-Bullet list. **Character Name** — what they do, reveal, or how they develop.
+## Momentos de personajes
+Lista con viñetas. **Nombre del personaje** — qué hace, qué revela o cómo evoluciona.
 
-## Themes & Tone
-One paragraph on the dominant themes and emotional register.
+## Temas y tono
+Un párrafo sobre los temas dominantes y el registro emocional.
 
-Be specific. Quote or paraphrase meaningful lines where relevant. Do not speculate beyond the text.\
+Reglas adicionales:
+- La salida final debe estar completamente en español.
+- No uses títulos en inglés como "Character Moments", "Overview", "Key Events" o "Themes".
+- Mantén los títulos exactos indicados arriba.
+- Si el texto fuente está en otro idioma, solo úsalo como evidencia, nunca como idioma de salida.
+- No cortes las frases a mitad de oración; cada punto debe quedar completo.
+- Si un momento o evento requiere más contexto, intégralo en la misma oración, no lo dejes incompleto.
+
+Sé específico. Cita o parafrasea líneas significativas cuando sea relevante. No especules más allá del texto.\
 """
 
 # ── Globals ───────────────────────────────────────────────��───────────────────
 
 _g: dict = {}
 _jobs: dict[str, asyncio.Queue] = {}
+_ANALYSIS_PROMPT_VERSION = 3
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+
+def _is_current_analysis_cache(payload: dict | None) -> bool:
+    return bool(payload) and payload.get("prompt_version") == _ANALYSIS_PROMPT_VERSION
 
 
 def sse(data: dict) -> str:
@@ -501,6 +519,36 @@ def _canonical_name(name: str) -> str:
     return cleaned
 
 
+_TITLE_PREFIXES = {
+    "dr", "dra", "doctor", "doctora", "sr", "sra", "srta", "señor", "señora", "don", "doña",
+    "comisario", "comisaria", "inspector", "inspectora", "lic", "licenciado", "licenciada",
+    "profesor", "profesora", "padre", "madre", "hermano", "hermana",
+}
+
+
+def _strip_name_prefixes(name: str) -> str:
+    text = _canonical_name(name)
+    tokens = re.split(r"\s+", text)
+    while tokens and re.sub(r"[^\wáéíóúüñ]", "", tokens[0].lower()) in _TITLE_PREFIXES:
+        tokens = tokens[1:]
+    return " ".join(tokens).strip()
+
+
+def _normalized_name(name: str) -> str:
+    stripped = _strip_name_prefixes(name)
+    folded = unicodedata.normalize("NFKD", stripped).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", folded).strip().lower()
+
+
+def _name_tokens(name: str) -> list[str]:
+    folded = _normalized_name(name)
+    return [tok for tok in re.split(r"[^a-z0-9]+", folded) if tok]
+
+
+def _is_single_token_name(name: str) -> bool:
+    return len(_name_tokens(name)) == 1
+
+
 def _character_id(name: str) -> str:
     folded = unicodedata.normalize("NFKD", _canonical_name(name)).encode("ascii", "ignore").decode()
     base = re.sub(r"[^a-z0-9]+", "_", folded.lower()).strip("_")
@@ -534,6 +582,95 @@ def _event_key(event: dict) -> str:
     return f"{title}:{event.get('type', 'other')}"
 
 
+def _collapse_character_variants(
+    characters: dict[str, dict],
+    name_to_id: dict[str, str],
+) -> tuple[dict[str, dict], dict[str, str]]:
+    if not characters:
+        return characters, name_to_id
+
+    groups: dict[str, set[str]] = {}
+    for cid, char in characters.items():
+        variants = {_canonical_name(str(char.get("name", "")))}
+        variants.update(_canonical_name(alias) for alias in char.get("aliases", []) or [])
+        for variant in variants:
+            core = _normalized_name(variant)
+            if not core:
+                continue
+            groups.setdefault(core, set()).add(cid)
+
+    first_token_to_cores: dict[str, set[str]] = {}
+    for core in groups:
+        tokens = core.split()
+        if len(tokens) >= 2:
+            first_token_to_cores.setdefault(tokens[0], set()).add(core)
+
+    for core, ids in list(groups.items()):
+        tokens = core.split()
+        if len(tokens) == 1:
+            candidates = first_token_to_cores.get(tokens[0], set())
+            if len(candidates) == 1:
+                target_core = next(iter(candidates))
+                groups[target_core].update(ids)
+
+    merged: dict[str, dict] = {}
+    remap: dict[str, str] = {}
+    rebuilt_name_to_id: dict[str, str] = {}
+
+    def score(char: dict) -> tuple[int, int, int, int]:
+        name = _canonical_name(str(char.get("name", "")))
+        aliases = char.get("aliases", []) or []
+        return (
+            _role_rank(str(char.get("role", ""))),
+            int(char.get("_mentions", 0) or 0),
+            len(name.split()),
+            len(name) + len(aliases),
+        )
+
+    for ids in groups.values():
+        group_chars = [characters[cid] for cid in ids if cid in characters]
+        if not group_chars:
+            continue
+        rep_char = max(group_chars, key=score)
+        rep_id = str(rep_char.get("id"))
+        rep_name = _canonical_name(str(rep_char.get("name", "")))
+        rep_role = str(rep_char.get("role", "minor"))
+        rep_desc = str(rep_char.get("description", "")).strip()
+        alias_pool: set[str] = set()
+        total_mentions = 0
+
+        for cid in ids:
+            char = characters[cid]
+            remap[cid] = rep_id
+            total_mentions += int(char.get("_mentions", 0) or 0)
+            variants = {_canonical_name(str(char.get("name", "")))}
+            variants.update(_canonical_name(alias) for alias in char.get("aliases", []) or [])
+            for variant in variants:
+                if variant:
+                    alias_pool.add(variant)
+                    rebuilt_name_to_id[variant.lower()] = rep_id
+                    rebuilt_name_to_id[_normalized_name(variant)] = rep_id
+            if _role_rank(str(char.get("role", ""))) > _role_rank(rep_role):
+                rep_role = str(char.get("role", rep_role))
+            desc = str(char.get("description", "")).strip()
+            if desc and len(desc) > len(rep_desc):
+                rep_desc = desc[:160]
+
+        alias_pool.discard(rep_name)
+        merged[rep_id] = {
+            "id": rep_id,
+            "name": rep_name,
+            "role": rep_role if rep_role in ("protagonist", "antagonist", "supporting", "minor") else "minor",
+            "description": rep_desc[:160],
+            "aliases": sorted(alias_pool),
+            "_mentions": total_mentions,
+        }
+        rebuilt_name_to_id[rep_name.lower()] = rep_id
+        rebuilt_name_to_id[_normalized_name(rep_name)] = rep_id
+
+    return merged, rebuilt_name_to_id
+
+
 def _merge_section_graphs(graphs: list[dict]) -> dict:
     characters: dict[str, dict] = {}
     name_to_id: dict[str, str] = {}
@@ -541,22 +678,27 @@ def _merge_section_graphs(graphs: list[dict]) -> dict:
     events: dict[str, dict] = {}
 
     for graph in graphs:
-        source = graph.get("_source", {})
         for char in graph.get("characters", []) or []:
             name = _canonical_name(str(char.get("name", "")))
             if not name:
                 continue
             cid = _character_id(name)
-            aliases = {_canonical_name(alias) for alias in char.get("aliases", []) or [] if _canonical_name(str(alias))}
+            aliases = {
+                _canonical_name(alias)
+                for alias in char.get("aliases", []) or []
+                if _canonical_name(str(alias))
+            }
             aliases.add(name)
             name_to_id[name.lower()] = cid
+            name_to_id[_normalized_name(name)] = cid
             for alias in aliases:
                 name_to_id[alias.lower()] = cid
-            existing = characters.get(cid)
+                name_to_id[_normalized_name(alias)] = cid
             role = char.get("role", "minor")
             if role not in ("protagonist", "antagonist", "supporting", "minor"):
                 role = "minor"
             description = str(char.get("description", "")).strip()
+            existing = characters.get(cid)
             if not existing:
                 characters[cid] = {
                     "id": cid,
@@ -574,13 +716,17 @@ def _merge_section_graphs(graphs: list[dict]) -> dict:
                     existing["description"] = description[:160]
                 existing["aliases"] = sorted(set(existing.get("aliases", [])) | (aliases - {existing["name"]}))
 
+    characters, name_to_id = _collapse_character_variants(characters, name_to_id)
+
+    for graph in graphs:
+        source = graph.get("_source", {})
         for rel in graph.get("relationships", []) or []:
             from_name = _canonical_name(str(rel.get("from", "")))
             to_name = _canonical_name(str(rel.get("to", "")))
             if not from_name or not to_name or from_name.lower() == to_name.lower():
                 continue
-            from_id = name_to_id.get(from_name.lower()) or _character_id(from_name)
-            to_id = name_to_id.get(to_name.lower()) or _character_id(to_name)
+            from_id = name_to_id.get(from_name.lower()) or name_to_id.get(_normalized_name(from_name)) or _character_id(from_name)
+            to_id = name_to_id.get(to_name.lower()) or name_to_id.get(_normalized_name(to_name)) or _character_id(to_name)
             if from_id == to_id:
                 continue
             if from_id not in characters:
@@ -631,7 +777,7 @@ def _merge_section_graphs(graphs: list[dict]) -> dict:
                 "title": str(event.get("title", "Evento")).strip()[:80],
                 "description": str(event.get("description", "")).strip()[:220],
                 "type": event.get("type", "other"),
-                "characters": [name_to_id.get(name.lower()) or _character_id(name) for name in names if name],
+                "characters": [name_to_id.get(name.lower()) or name_to_id.get(_normalized_name(name)) or _character_id(name) for name in names if name],
                 "is_climax": bool(event.get("is_climax", False)),
                 "is_resolution": bool(event.get("is_resolution", False)),
                 "is_epilogue": bool(event.get("is_epilogue", False)),
@@ -677,16 +823,16 @@ def _contexts_for_section_graph(contexts: list[dict], limit: int = 18) -> list[d
     return sorted(selected[:limit], key=lambda c: (c.get("chapter_num", 0), c.get("section_id", "")))
 
 
-async def _extract_section_graphs(contexts: list[dict], llm: LLM, lang_name: str) -> list[dict]:
+async def _extract_section_graphs(contexts: list[dict], llm: LLM) -> list[dict]:
     graphs = []
-    system = "You are a precise literary data extraction tool. Output ONLY valid JSON."
+    system = "Eres una herramienta precisa de extracción literaria. Devuelve SOLO JSON válido."
     for idx, ctx in enumerate(_contexts_for_section_graph(contexts), 1):
         content = (
             f"Book: {ctx.get('book_title')}\n"
             f"Chapter {ctx.get('chapter_num', 0) + 1}: {ctx.get('chapter_title')}\n"
             f"Section ID: {ctx.get('section_id')}\n\n"
             f"{ctx.get('section_text', '')[:7000]}\n\n---\n\n"
-            f"{_SECTION_GRAPH_PROMPT}\nRespond entirely in {lang_name}."
+            f"{_SECTION_GRAPH_PROMPT}\nResponde completamente en español."
         )
         raw = await llm.chat(
             messages=[{"role": "user", "content": content}],
@@ -956,6 +1102,78 @@ async def api_list_models_current():
         return JSONResponse({"models": [], "error": str(exc)}, status_code=400)
 
 
+@app.get("/api/debug/llm/test")
+async def api_debug_llm_test(model: str = "", prompt: str = "", stream: bool = True):
+    llm = _g["llm"]
+    prompt = prompt.strip() or "Responde con una sola palabra: OK."
+    chosen_model = model.strip() or llm.answer_model
+    logs: list[dict] = []
+
+    def log(step: str, **data):
+      entry = {"t_ms": round((time.perf_counter() - started) * 1000, 1), "step": step}
+      entry.update(data)
+      logs.append(entry)
+      logger.info("LLM DEBUG %s", entry)
+
+    started = time.perf_counter()
+    log("start", provider=llm.provider, answer_model=llm.answer_model, expand_model=llm.expand_model, base_url=llm.base_url, chosen_model=chosen_model, stream=stream)
+
+    try:
+        t0 = time.perf_counter()
+        models = list_available_models(llm.provider)
+        log("models_listed", count=len(models), elapsed_ms=round((time.perf_counter() - t0) * 1000, 1), models=models[:20])
+    except Exception as exc:
+        models = []
+        log("models_error", error=str(exc))
+
+    try:
+        if stream:
+            chunks: list[str] = []
+            first_chunk_ms: float | None = None
+            async for chunk in llm.stream(
+                messages=[{"role": "user", "content": prompt}],
+                system="Responde en español y devuelve solo la respuesta final.",
+                max_tokens=128,
+                model=chosen_model,
+            ):
+                if first_chunk_ms is None:
+                    first_chunk_ms = round((time.perf_counter() - started) * 1000, 1)
+                    log("first_chunk", t_ms=first_chunk_ms)
+                chunks.append(chunk)
+            output = "".join(chunks)
+            log("completed", output_chars=len(output), output_preview=output[:500])
+        else:
+            t1 = time.perf_counter()
+            output = await llm.chat(
+                messages=[{"role": "user", "content": prompt}],
+                system="Responde en español y devuelve solo la respuesta final.",
+                max_tokens=128,
+                model=chosen_model,
+            )
+            log("completed", elapsed_ms=round((time.perf_counter() - t1) * 1000, 1), output_chars=len(output), output_preview=output[:500])
+    except Exception as exc:
+        log("error", error=str(exc))
+        return JSONResponse({
+            "ok": False,
+            "provider": llm.provider,
+            "model": chosen_model,
+            "prompt": prompt,
+            "models": models,
+            "logs": logs,
+            "error": str(exc),
+        }, status_code=500)
+
+    return {
+        "ok": True,
+        "provider": llm.provider,
+        "model": chosen_model,
+        "prompt": prompt,
+        "models": models,
+        "logs": logs,
+        "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+    }
+
+
 async def _save_upload_to_temp(file: UploadFile, suffix: str) -> Path:
     """Stream an uploaded book to a secure temp file while enforcing a size cap."""
     total = 0
@@ -1075,10 +1293,15 @@ async def api_char_map(book_id: str, regen: bool = False):
         cache_file = MAPS_DIR / f"{book_id}.json"
         if not regen:
             cached = get_analysis_cache(book_id, "character_map")
+            if not _is_current_analysis_cache(cached):
+                cached = None
             if not cached and cache_file.exists():
                 try:
                     cached = json.loads(cache_file.read_text())
-                    set_analysis_cache(book_id, "character_map", cached)
+                    if not _is_current_analysis_cache(cached):
+                        cached = None
+                    else:
+                        set_analysis_cache(book_id, "character_map", cached)
                 except Exception:
                     cached = None
             if cached:
@@ -1092,9 +1315,7 @@ async def api_char_map(book_id: str, regen: bool = False):
         if not book.get("passages"):
             yield sse({"error": "Este libro no tiene pasajes indexados. Vuelve a ingerirlo antes de analizarlo."}); return
 
-        lang      = book.get("language", "en")
-        lang_name = {"en": "English", "es": "Spanish", "fr": "French"}.get(lang, "English")
-        lang_note = f"\nAll character names, descriptions and labels must be in {lang_name}."
+        lang_note = "\nTodos los nombres, descripciones y etiquetas deben estar en español."
 
         # ── Pass 1: broad retrieval to discover character names ───────────────
         yield sse({"stage": "searching", "msg": "Retrieving character passages…"})
@@ -1180,9 +1401,10 @@ async def api_char_map(book_id: str, regen: bool = False):
 
         try:
             yield sse({"stage": "analyzing", "msg": "Extrayendo relaciones por sección..."})
-            section_graphs = await _extract_section_graphs(graph_contexts, llm, lang_name)
+            section_graphs = await _extract_section_graphs(graph_contexts, llm)
             data = _merge_section_graphs(section_graphs)
             if len(data.get("characters", [])) >= 2 and data.get("relationships"):
+                data["prompt_version"] = _ANALYSIS_PROMPT_VERSION
                 set_analysis_cache(book_id, "character_map", data)
                 yield sse({"done": True, "mermaid": to_mermaid(data), "data": data})
                 return
@@ -1200,6 +1422,7 @@ async def api_char_map(book_id: str, regen: bool = False):
 
         try:
             data = extract_json(raw)
+            data["prompt_version"] = _ANALYSIS_PROMPT_VERSION
             set_analysis_cache(book_id, "character_map", data)
             yield sse({"done": True, "mermaid": to_mermaid(data), "data": data})
         except Exception as exc:
@@ -1222,10 +1445,15 @@ async def api_char_chart(book_id: str, character: str, regen: bool = False):
         profile_key = _safe_name(character)
         if not regen:
             cached = get_analysis_cache(book_id, "character_profile", profile_key)
+            if not _is_current_analysis_cache(cached):
+                cached = None
             if not cached and cache_file.exists():
                 try:
                     cached = json.loads(cache_file.read_text())
-                    set_analysis_cache(book_id, "character_profile", cached, profile_key)
+                    if not _is_current_analysis_cache(cached):
+                        cached = None
+                    else:
+                        set_analysis_cache(book_id, "character_profile", cached, profile_key)
                 except Exception:
                     cached = None
             if cached:
@@ -1281,7 +1509,7 @@ async def api_char_chart(book_id: str, character: str, regen: bool = False):
         set_analysis_cache(
             book_id,
             "character_profile",
-            {"name": character, "content": "".join(chunks)},
+            {"name": character, "content": "".join(chunks), "prompt_version": _ANALYSIS_PROMPT_VERSION},
             profile_key,
         )
 
@@ -1330,14 +1558,12 @@ async def api_relationship(book_id: str, char_a: str, char_b: str):
         yield sse({"stage": "analyzing", "msg": "Analizando relación..."})
 
         ctx_text  = build_context_block(contexts)
-        lang      = book.get("language", "en")
-        lang_name = {"en": "English", "es": "Spanish", "fr": "French"}.get(lang, "English")
 
         yield sse({"stage": "waiting", "msg": f"Esperando respuesta de {llm.provider}..."})
         async for chunk in llm.stream(
             messages=[{"role": "user",
                        "content": f"Passages:\n\n{ctx_text}\n\n---\n\n{prompt}"}],
-            system=f"You are a literary analyst. Create concise, focused relationship analyses. Respond entirely in {lang_name}.",
+            system="Eres un analista literario. Redacta análisis de relaciones concisos y precisos. Responde únicamente en español neutro.",
             max_tokens=1200,
         ):
             yield sse({"type": "text", "text": chunk})
@@ -1369,11 +1595,16 @@ async def api_chapter_summary(book_id: str, chapter_num: int, regen: bool = Fals
 
         if not regen:
             cached = get_analysis_cache(book_id, "chapter_summary", cache_subject)
+            if not _is_current_analysis_cache(cached):
+                cached = None
             cache_file = SUMMARIES_DIR / book_id / f"ch{chapter_num}.json"
             if not cached and cache_file.exists():
                 try:
                     cached = json.loads(cache_file.read_text())
-                    set_analysis_cache(book_id, "chapter_summary", cached, cache_subject)
+                    if not _is_current_analysis_cache(cached):
+                        cached = None
+                    else:
+                        set_analysis_cache(book_id, "chapter_summary", cached, cache_subject)
                 except Exception:
                     cached = None
         else:
@@ -1390,35 +1621,42 @@ async def api_chapter_summary(book_id: str, chapter_num: int, regen: bool = Fals
 
         ch_title = get_chapter_title(book_id, chapter_num) or f"Chapter {chapter_num + 1}"
 
-        yield sse({"stage": "reading", "msg": f"Reading {len(sections)} sections…"})
+        yield sse({"stage": "reading", "msg": f"Leyendo {len(sections)} secciones..."})
 
         ctx_text  = "\n\n---\n\n".join(sections)
         max_chars = (llm.context_limit * 4 - 6000) if llm.context_limit else 160_000
+        if llm.provider == "openai":
+            max_chars = min(max_chars, 32_000)
+        elif llm.provider in ("anthropic", "gemini"):
+            max_chars = min(max_chars, 64_000)
         if max_chars > 0 and len(ctx_text) > max_chars:
             ctx_text = ctx_text[:max_chars]
 
         prompt    = _CHAPTER_PROMPT.format(num=chapter_num + 1, title=ch_title)
-        lang      = book.get("language", "en")
-        lang_name = {"en": "English", "es": "Spanish", "fr": "French"}.get(lang, "English")
 
         yield sse({"stage": "analyzing", "msg": "Resumiendo capítulo..."})
         yield sse({"stage": "waiting", "msg": f"Esperando respuesta de {llm.provider}..."})
 
         accumulated = ""
-        async for chunk in llm.stream(
-            messages=[{"role": "user",
-                       "content": f"Chapter text:\n\n{ctx_text}\n\n---\n\n{prompt}"}],
-            system=f"You are a literary analyst. Write clear, insightful chapter summaries. Respond entirely in {lang_name}.",
-            max_tokens=1500,
-        ):
-            accumulated += chunk
-            yield sse({"type": "text", "text": chunk})
+        try:
+            async for chunk in llm.stream(
+                messages=[{"role": "user",
+                           "content": f"Texto del capítulo:\n\n{ctx_text}\n\n---\n\n{prompt}"}],
+                system="Eres un analista literario. Escribe resúmenes claros, precisos e incisivos. Responde únicamente en español neutro.",
+                max_tokens=1200,
+            ):
+                accumulated += chunk
+                yield sse({"type": "text", "text": chunk})
+        except Exception as exc:
+            yield sse({"error": f"No se pudo generar el resumen del capítulo: {exc}"})
+            return
 
         if accumulated:
             set_analysis_cache(book_id, "chapter_summary", {
                 "chapter_num":   chapter_num,
                 "chapter_title": ch_title,
                 "summary":       accumulated,
+                "prompt_version": _ANALYSIS_PROMPT_VERSION,
             }, cache_subject)
 
         yield sse({"done": True})

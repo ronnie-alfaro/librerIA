@@ -168,8 +168,15 @@ export function BookAnalysisView({ initialBookId = '', initialTab = 'map', embed
             </nav>
 
             {tab === 'map' && (
-              <div className="analysis-card">
-                <h2>Relaciones</h2>
+              <div className="analysis-card relationship-card">
+                <div className="relationship-intro">
+                  <span className="eyebrow">Mapa de relaciones</span>
+                  <h2>Quién es quién y qué pesa en la historia</h2>
+                  <p>
+                    Esta vista prioriza vínculos directos, dirección de la relación y evidencia. El grafo se centra en
+                    un personaje a la vez para evitar ruido visual y mostrar la red que realmente importa.
+                  </p>
+                </div>
                 {!relationships.length && <p className="muted">Ejecuta el análisis para construir el mapa de relaciones.</p>}
                 {characters.length > 0 && (
                   <CharacterGraph
@@ -537,14 +544,14 @@ function SummaryBody({ section }: { section: SummarySection }) {
     <div className="summary-body">
       {blocks.map((block, index) => {
         if (/^\d+\.\s*/m.test(block)) {
+          const items = collectListItems(block, /^\d+\.\s*/);
           return (
             <ol className={section.kind === 'events' ? 'event-list' : undefined} key={index}>
-              {block.split('\n').filter(Boolean).map((line) => {
-                const item = line.replace(/^\d+\.\s*/, '').trim();
+              {items.map((item) => {
                 const [label, ...rest] = item.split(':');
                 const hasLabel = rest.length > 0 && label.length < 90;
                 return (
-                  <li key={line}>
+                  <li key={`${index}-${item}`}>
                     {hasLabel ? (
                       <>
                         <strong>{stripMarkdown(label)}</strong>
@@ -559,10 +566,11 @@ function SummaryBody({ section }: { section: SummarySection }) {
         }
 
         if (/^[-*]\s/m.test(block)) {
+          const items = collectListItems(block, /^[-*]\s*/);
           return (
             <ul key={index}>
-              {block.split('\n').filter(Boolean).map((line) => (
-                <li key={line}>{renderInline(line.replace(/^[-*]\s*/, ''))}</li>
+              {items.map((item) => (
+                <li key={item}>{renderInline(item)}</li>
               ))}
             </ul>
           );
@@ -610,12 +618,17 @@ function summaryKind(title: string): SummarySection['kind'] {
 
 function translateSummaryTitle(title: string) {
   const titles: Record<string, string> = {
-    Overview: 'Panorama',
+    Overview: 'Panorama general',
+    'Narrative Overview': 'Panorama general',
+    'Panorama': 'Panorama general',
     'Key Events': 'Eventos clave',
+    Events: 'Eventos clave',
     Themes: 'Temas',
+    'Themes and Tone': 'Temas y tono',
     Characters: 'Personajes',
     'Character Notes': 'Notas de personajes',
     'Notable Quotes': 'Citas destacadas',
+    'Character Moments': 'Momentos de personajes',
   };
   return titles[title] || title;
 }
@@ -704,6 +717,25 @@ function translateRole(role: string) {
     character: 'personaje',
   };
   return roles[role] || role;
+}
+
+function collectListItems(block: string, marker: RegExp) {
+  const items: string[] = [];
+  let current = '';
+
+  for (const rawLine of block.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (marker.test(line)) {
+      if (current) items.push(current.trim());
+      current = line.replace(marker, '').trim();
+    } else {
+      current = current ? `${current} ${line}` : line;
+    }
+  }
+
+  if (current) items.push(current.trim());
+  return items;
 }
 
 function translateTaskStatus(message: string) {
